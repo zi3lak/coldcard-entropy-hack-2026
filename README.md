@@ -2,13 +2,15 @@
 
 Kompletny raport badawczy (deep research) o największym znanym exploicie portfela sprzętowego w historii Bitcoina: wadzie generatora liczb losowych w firmware Coldcard, ujawnionej 30 lipca 2026 r.
 
-**🔗 Żywa strona:** publikowana przez GitHub Pages (link w ustawieniach repozytorium / sekcji "About").
+**🔗 Żywa strona:** publikowana przez GitHub Pages (link w ustawieniach repozytorium / sekcji "About") — dostępna po polsku (`/`) i po angielsku (`/en/`), z przełącznikiem języka w nagłówku.
 
 ## Zawartość
 
-- [`Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md`](Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md) — pełny tekst źródłowy raportu w Markdown, 63 przypisy źródłowe.
-- [`index.html`](index.html) — wersja webowa raportu (ta sama treść, wygenerowana z Markdown przez pandoc + własny szablon), publikowana jako strona GitHub Pages.
-- [`assets/`](assets) — wykresy i wizualizacje użyte w raporcie.
+- [`Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md`](Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md) — pełny tekst źródłowy raportu (PL) w Markdown, 63 przypisy źródłowe.
+- [`en/Coldcard-Entropy-Hack-2026-Engineering-Analysis.md`](en/Coldcard-Entropy-Hack-2026-Engineering-Analysis.md) — pełne tłumaczenie raportu na angielski.
+- [`index.html`](index.html) / [`en/index.html`](en/index.html) — wersje webowe raportu (ta sama treść, wygenerowana z Markdown przez pandoc + własny szablon), publikowane jako strona GitHub Pages.
+- [`assets/report.css`](assets/report.css), [`assets/report.js`](assets/report.js) — wspólna, profesjonalna szata graficzna (tryb jasny/ciemny, blok metryk dokumentu, spis treści, statystyki) współdzielona przez obie wersje językowe.
+- [`assets/`](assets) — wykresy i wizualizacje w wersji polskiej; [`assets/en/`](assets/en) — te same wykresy przerysowane po angielsku.
 
 ## Zakres raportu
 

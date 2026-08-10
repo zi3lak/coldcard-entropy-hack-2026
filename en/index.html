@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Coldcard Entropy Hack (2026) — Engineering Analysis</title>
+<meta name="description" content="A complete engineering report: root cause, search-space mathematics, timeline, precedents, and defensive recommendations following the Coldcard hardware-wallet attack, July–August 2026.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔓</text></svg>">
+<link rel="stylesheet" href="../assets/report.css">
+<link rel="alternate" hreflang="pl" href="../index.html">
+</head>
+<body>
+
+<div class="top-accent"></div>
+<div class="topbar">
+  <div class="brand"><span class="mark">CK</span><span class="full"><strong>COLDCARD</strong>&nbsp;ENTROPY&nbsp;HACK&nbsp;2026</span></div>
+  <div class="topbar-actions">
+    <div class="lang-switch">
+      <a href="../index.html">PL</a>
+      <a class="active" href="index.html">EN</a>
+    </div>
+    <button class="iconbtn" id="themeToggle" aria-label="Toggle theme">🌓</button>
+    <a class="iconbtn" href="Coldcard-Entropy-Hack-2026-Engineering-Analysis.md">⬇ .md</a>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="kicker">Research report · engineering analysis</div>
+  <h1>The Coldcard Entropy Hack: what happened, why, and how to protect yourself</h1>
+  <p class="dek">A complete engineering reconstruction of the largest known hardware-wallet breach in Bitcoin's history — from a single character in a preprocessor guard, through the mathematics of the search space, to the latest data on losses, lawsuits, and market fallout.</p>
+  <div class="meta-row">
+    <span class="pill hot">Updated: August 10, 2026</span>
+    <span class="pill">Incident: July 30, 2026</span>
+    <span class="pill">63 sources</span>
+  </div>
+</div>
+
+<div class="doc-meta">
+  <table>
+    <tr><td class="k">Document type</td><td class="v">Research report (deep research), engineering grade</td></tr>
+    <tr><td class="k">Status</td><td class="v">Public · updated as new information emerges</td></tr>
+    <tr><td class="k">Version / as of</td><td class="v">August 10, 2026 (first published: August 9, 2026)</td></tr>
+    <tr><td class="k">Scope</td><td class="v">Root cause, entropy mathematics, crisis communication, precedents, recommendations</td></tr>
+    <tr><td class="k">Language</td><td class="v">English · <a href="../index.html">Wersja polska →</a></td></tr>
+  </table>
+</div>
+
+<div class="stat-strip">
+  <div class="stat"><div class="num">≥1,719 BTC</div><div class="lbl">confirmed losses (Galaxy Research, 08/08)</div></div>
+  <div class="stat"><div class="num">~$111–130M</div><div class="lbl">estimated value of stolen funds</div></div>
+  <div class="stat"><div class="num">2^40.69</div><div class="lbl">real seed search space on Mk2/Mk3 (vs. designed 2^128)</div></div>
+  <div class="stat"><div class="num">5y 4mo</div><div class="lbl">how long the bug lived in production firmware</div></div>
+</div>
+
+<div class="update-banner">
+  <div class="box">
+    <strong>What's new (Section 10):</strong> Galaxy Research's revised loss tally (1,719 BTC / ~$111M, 250+ victim reports), a record ~210,000 BTC outflow from long-term-holder wallets, Muneeb Ali's proposed claim-buyback fund, formal victim intake by Stoltmann Law, and Coinkite's formalized suspension of customer-data deletion pending anticipated legal proceedings.
+  </div>
+</div>
+
+<div class="toc-wrap">
+  <details class="toc" open>
+    <summary>Contents</summary>
+    <ol>
+      <li><a href="#executive-summary">Executive Summary</a></li>
+      <li><a href="#scale-and-course-of-the-attack-four-waves-and-the-anatomy-of-a-sweep">Scale and Course of the Attack: Four Waves</a></li>
+      <li><a href="#anatomy-of-the-bug-root-cause-engineering-analysis">Anatomy of the Bug: Root-Cause Analysis</a></li>
+      <li><a href="#seed-technology-the-formal-foundations-that-failed-and-the-ones-that-worked">Seed Technology: What Failed and What Worked</a></li>
+      <li><a href="#why-this-happened-three-layers-of-causes">Why This Happened: Three Layers of Causes</a></li>
+      <li><a href="#the-owner-under-the-microscope-rodolfo-novak-nvk-posts-jabs-and-contradictions">The Owner Under the Microscope: Rodolfo Novak (NVK)</a></li>
+      <li><a href="#precedents-and-industry-context-the-bad-entropy-class-is-not-new">Precedents and Industry Context</a></li>
+      <li><a href="#how-to-protect-yourself-from-emergency-migration-to-vendor-resilient-architecture">How to Protect Yourself: Migration and Resilient Architecture</a></li>
+      <li><a href="#consequences-legal-market-and-engineering">Consequences: Legal, Market, and Engineering</a></li>
+      <li><a href="#update-how-the-situation-developed-august-810-2026" class="upd">Update: August 8–10 ✦ new</a></li>
+      <li><a href="#final-conclusions">Final Conclusions</a></li>
+    </ol>
+  </details>
+</div>
+
+<article>
+<h1 id="the-coldcard-entropy-hack-julyaugust-2026-a-critical-engineering-analysis-of-the-incident-seed-technology-and-the-limits-of-the-btc-self-custody-model">The Coldcard Entropy Hack (July–August 2026): A Critical Engineering Analysis of the Incident, Seed Technology, and the Limits of the BTC Self-Custody Model</h1>
+<p><strong>Document type:</strong> engineering-grade research report (deep research) — root-cause analysis, mathematical reconstruction of the search space, industry context, defensive recommendations. <strong>As of:</strong> August 10, 2026 (updated — see Section 10)</p>
+<hr />
+<h2 id="executive-summary">1. Executive Summary</h2>
+<p>On Thursday, <strong>July 30, 2026</strong>, in a window of <strong>41 minutes (01:10:20–01:51:26 UTC)</strong>, an unknown actor drained <strong>1,196 Bitcoin addresses</strong>, taking <strong>1,082.65 BTC (~$70.2M)</strong> — without physical access to any device, without breaking a PIN, without attacking the Bitcoin protocol itself <a href="https://thehackernews.com/2026/08/coldcard-hardware-wallet-flaw-linked-to.html"><sup>43</sup></a>. In the following days at least three further waves occurred; confirmed estimates from Galaxy Research put the toll at <strong>1,596 BTC from ~7,300 addresses</strong>, and a scenario including a fourth wave raises the total loss to <strong>2,055 BTC (~$130M)</strong> <a href="https://crypto.news/galaxy-estimates-coldcard-exploit-may-have-stolen-up-to-2055-bitcoin/"><sup>56</sup></a>. This was the largest known hardware-wallet exploit in history and the third-largest crypto hack of 2026 <a href="https://www.trmlabs.com/resources/blog/the-largest-hardware-wallet-exploit-of-2026-inside-the-usd-116-million-coldcard-hack"><sup>15</sup></a>.</p>
+<p>The root cause was not spectacular in a cryptographic sense — it was trivial in an engineering sense, and that is precisely what makes it so alarming. On <strong>March 1, 2021</strong>, in commit <code>b18723dd</code>, Coinkite migrated seed generation from its own <code>ckcc.rng_bytes()</code> function (which reached down to the STM32 microcontroller’s hardware TRNG) to <code>ngu.random.bytes()</code> from the libngu library <a href="https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware"><sup>18</sup></a>. Due to a preprocessor guard bug — an <code>#ifndef</code> that checked the <strong>existence</strong> of the <code>MICROPY_HW_ENABLE_RNG</code> macro rather than its <strong>value</strong> — the <code>rng_get()</code> symbol resolved at link time to the software fallback generator <strong>Yasmarang</strong>, seeded from the chip’s unique identifier and clock registers <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>18</sup></a>. The effect: for <strong>5 years, 4 months and 29 days</strong>, wallets generated mnemonics that looked random but whose effective search space was <strong>≤ 2^40.69 on Mk2/Mk3</strong> and <strong>≤ 2^73.27 on Mk4/Mk5/Q</strong>, instead of the designed 2^128 <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>13</sup></a>.</p>
+<p>This report answers six questions: <strong>what happened</strong> (reconstruction of the waves and their scale), <strong>why</strong> (engineering, organizational, and cultural analysis), <strong>how seed technology works</strong> (formal foundations of BIP-39/BIP-32, TRNG vs. PRNG), <strong>what the owner did and said</strong> (Rodolfo Novak’s crisis communication and his history of attacking competitors), <strong>what the precedents were</strong> (Trust Wallet, Dark Skippy, Kraken vs. Trezor, Ledger Recover), and <strong>how to protect yourself</strong> (migration, dice, passphrase, multisig, engineering hygiene). The central thesis: hardware-wallet security is decided <strong>in the millisecond the seed is generated</strong>, and every later layer — air-gap, secure elements, steel backups — is secondary to the quality of that entropy <a href="https://news.futunn.com/en/post/77070738/multiple-layers-of-protection-still-breached-coldcard-s-random-number"><sup>1</sup></a>.</p>
+<hr />
+<h2 id="scale-and-course-of-the-attack-four-waves-and-the-anatomy-of-a-sweep">2. Scale and Course of the Attack: Four Waves and the Anatomy of a Sweep</h2>
+<h3 id="on-chain-reconstruction">2.1. On-Chain Reconstruction</h3>
+<p>The attack was not a single exploiting transaction — there was no “smart contract with a hole,” no break-in into Coinkite’s infrastructure. Over weeks or months, the attacker <strong>reconstructed candidate seeds offline</strong>, derived addresses from them, and compared them against the public UTXO ledger, then executed a coordinated “sweep” of the compromised wallets using ordinary, valid transactions <a href="https://defimon.xyz/blog/coldcard-hack-july-2026"><sup>13</sup></a>. Galaxy Research reconstructed the first wave: 1,196 addresses drained in full, with no change outputs, at a <strong>fixed, hard-coded fee of 30 sat/vB</strong>, across six blocks <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>43</sup></a>. The second wave (27 hours later, 76.16 BTC from 1,478 addresses over 3h42m) mostly used 10 and 50 sat/vB; the transaction fingerprints of the first two waves point to a single operator or a single tool, while the third breaks the pattern <a href="https://cryptobriefing.com/galaxy-research-coldcard-btc-attack-1367/"><sup>43</sup></a>.</p>
+<p>“Genetic” evidence confirmed the link to the bug: all <strong>3,953 stolen coins</strong> from the first two waves were minted (created) <strong>after block 674,951</strong> — i.e., after March 17, 2021, the release date of the vulnerable firmware v4.0.0; the oldest coin in wave one comes from block 675,955, and in wave two from block 675,829 <a href="https://x.com/glxyresearch/status/2083560940469981591"><sup>43</sup></a>. This is a timing signature exactly consistent with the vulnerability window: the attacker reconstructed only seeds generated by the flawed firmware.</p>
+<div class="table-wrap"><table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>Wave</th>
+<th>Date/time (UTC)</th>
+<th>Addresses</th>
+<th>BTC</th>
+<th>Characteristics</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2026-07-30, 01:10–01:51 (41 min)</td>
+<td>1,196 (later corrected to 1,195)</td>
+<td>1,082.65</td>
+<td>fixed 30 sat/vB fee, no change, 6 blocks <a href="https://wublock.substack.com/p/coldcards-five-year-vulnerability"><sup>43</sup></a></td>
+</tr>
+<tr>
+<td>2</td>
+<td>2026-07-31 morning (3h42m)</td>
+<td>1,478</td>
+<td>76.16</td>
+<td>mostly 10/50 sat/vB, victim set disjoint from wave 1 <a href="https://x.com/glxyresearch/status/2083560940469981591"><sup>43</sup></a></td>
+</tr>
+<tr>
+<td>3</td>
+<td>2026-08-01</td>
+<td>1,912</td>
+<td>207.73</td>
+<td>different transaction fingerprint — different actor or changed tactics <a href="https://defimon.xyz/blog/coldcard-hack-july-2026"><sup>42</sup></a></td>
+</tr>
+<tr>
+<td>4 (suspected)</td>
+<td>2026-08-03</td>
+<td>~709</td>
+<td>~448.7</td>
+<td>“medium-high confidence,” excluded from Galaxy’s confirmed estimate pending victim confirmations <a href="https://wublock.substack.com/p/coldcards-five-year-vulnerability"><sup>56</sup></a></td>
+</tr>
+</tbody>
+</table></div>
+<figure>
+<img src="../assets/en/fig4_waves.png" alt="Four sweep waves — BTC and addresses" />
+<figcaption aria-hidden="true">Four sweep waves — BTC and addresses</figcaption>
+</figure>
+<h3 id="discrepancies-in-the-estimates-and-why-they-are-unavoidable">2.2. Discrepancies in the Estimates, and Why They Are Unavoidable</h3>
+<p>Bitcoin identifies addresses, not people or device models — attributing a sweep to the Coldcard bug rests on heuristics (full drains with no change, similar input types, tight time windows, repeated fees, shared destinations, later co-spending) and on victim reports, not on a cryptographic reproduction of every seed <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>. That is why the numbers differ between trackers, and they should be presented as ranges with methodology, not as a single “truth.”</p>
+<div class="table-wrap"><table>
+<colgroup>
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+<col style="width: 25%" />
+</colgroup>
+<thead>
+<tr>
+<th>Source / tracker</th>
+<th>As of</th>
+<th>Estimate</th>
+<th>Method</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Galaxy Research (confirmed)</td>
+<td>2026-08-03/04</td>
+<td><strong>1,596 BTC</strong> from ~7,300 addresses (3 waves + 14 smaller incidents; 73 victim reports)</td>
+<td>on-chain + private victim channel <a href="https://es.tradingview.com/news/cointelegraph:bc48617a5094b:0-coldcard-bitcoin-theft-tops-100m-across-3-confirmed-attack-waves-galaxy/"><sup>56</sup></a></td>
+</tr>
+<tr>
+<td>Galaxy Research (incl. wave 4)</td>
+<td>2026-08-04</td>
+<td>up to <strong>2,055 BTC</strong> (~$130M)</td>
+<td>as above, wave 4 “medium-high confidence” <a href="https://crypto.news/galaxy-estimates-coldcard-exploit-may-have-stolen-up-to-2055-bitcoin/"><sup>56</sup></a></td>
+</tr>
+<tr>
+<td>Coldcard Sweep Watch (verified minimum)</td>
+<td>2026-08-07</td>
+<td><strong>1,405.07 BTC</strong> from ~4,925 addresses</td>
+<td>public methodology, confirmed clusters only <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a></td>
+</tr>
+<tr>
+<td>coldcard.rip (wave attribution)</td>
+<td>2026-08-03</td>
+<td><strong>1,433.13 BTC</strong> from 5,477 addresses, <strong>10 waves</strong></td>
+<td>wave classification with routes and fees <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a></td>
+</tr>
+<tr>
+<td>TRM Labs</td>
+<td>2026-08-05</td>
+<td>~<strong>1,816 BTC</strong> (~$116M), 5,200+ addresses, 4 waves</td>
+<td>blockchain analytics + multi-actor indicators <a href="https://www.trmlabs.com/resources/blog/the-largest-hardware-wallet-exploit-of-2026-inside-the-usd-116-million-coldcard-hack"><sup>15</sup></a></td>
+</tr>
+<tr>
+<td>Halborn</td>
+<td>2026-08-07</td>
+<td>~7,300 addresses, losses &gt;$130M</td>
+<td>public synthesis <a href="https://www.halborn.com/blog/post/explained-the-coldcard-hack-july-2026"><sup>10</sup></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>More than <strong>90% of the stolen funds have not moved</strong> since the theft — coins from the first three confirmed waves have sat untouched on attacker-controlled addresses, unusual at this scale, giving investigators a window to coordinate with exchanges and law enforcement <a href="https://crypto.news/coldcard-rng-flaw-bitcoin-wallet-ai-audit/"><sup>54</sup></a>. Differences in transaction construction between waves lead TRM and Galaxy toward a hypothesis of <strong>multiple independent actors</strong> (TechCrunch says “at least a dozen” hackers, crypto.news says 15+) who, after the mechanism became public, went hunting before users could migrate their funds <a href="https://crypto.news/coldcard-rng-flaw-bitcoin-wallet-ai-audit/"><sup>12</sup></a>. At the peak of the fourth wave, ~<strong>13.8 sweeps per block</strong> were observed, versus ~0.3 before the incident <a href="https://crypto.news/galaxy-estimates-coldcard-exploit-may-have-stolen-up-to-2055-bitcoin/"><sup>54</sup></a>.</p>
+<h3 id="victims-and-the-human-scale">2.3. Victims and the Human Scale</h3>
+<p>The loss profile was inversely proportional to a typical exchange hack: by count, sub-1-BTC addresses dominated, but by value, larger balances did — meaning <strong>individual self-custody hodlers</strong>, not institutions <a href="https://x.com/glxyresearch/status/2083560940469981591"><sup>43</sup></a>. The iconic story became Canadian entrepreneur <strong>Jonathan Goodman</strong>: 18.25245667 BTC (~1.6M CAD) on a Coldcard kept in a bank vault, drained in 7 minutes (07/29, 21:36–21:43 local time — exactly within wave 1’s UTC window) <a href="https://www.ladbible.com/money/man-lost-million-bitcoin-hack-316035-20260807"><sup>28</sup></a>. His post — <em>“The hardest part is that I did everything right. I never gave anyone the seed phrase. The devices never touched the internet”</em> — was viewed by 7.6 million users on X and became a symbol of the incident: victims followed the textbook self-custody ritual (buying from a reputable manufacturer, generating offline, steel backups, never typing the phrase into anything online) and lost purely because <strong>the manufacturer botched the randomness</strong> <a href="https://techcrunch.com/2026/08/04/hackers-steal-over-130-million-by-exploiting-bug-in-offline-hardware-wallets/"><sup>28</sup></a>. Podcaster Guy Swann called the event <em>“the biggest blow in Bitcoin’s history aimed at the most switched-on, ‘properly secured’ hodlers”</em> <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>.</p>
+<figure>
+<img src="../assets/en/fig5_timeline.png" alt="Incident timeline" />
+<figcaption aria-hidden="true">Incident timeline</figcaption>
+</figure>
+<hr />
+<h2 id="anatomy-of-the-bug-root-cause-engineering-analysis">3. Anatomy of the Bug: Root-Cause Engineering Analysis</h2>
+<h3 id="the-intended-architecture-vs.-the-actual-call-path">3.1. The Intended Architecture vs. the Actual Call Path</h3>
+<p>Coldcard was designed on the assumption of <strong>no software fallback</strong>: the seed was to come exclusively from the STM32 peripheral’s hardware TRNG, with a hard fault on timeout or a repeated sample; the board’s production configuration deliberately set <code>MICROPY_HW_ENABLE_RNG (0)</code> to disable MicroPython’s built-in RNG path — because Coinkite supplied its own wrapper <code>random32()</code>/<code>random_buffer()</code>, exposed to Python as <code>ckcc.rng_bytes</code> <a href="https://blog.coinkite.com/entropy-technical-backgrounder/"><sup>18</sup></a>. In firmware v3.2.2, wallet generation was correct end-to-end: <code>make_new_wallet() → ckcc.rng_bytes(seed) → random_buffer() → STM32 RNG→DR → SHA-256 → BIP-39 words</code> <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>.</p>
+<p>The change came with the migration of elliptic-curve operations to libsecp256k1 from Bitcoin Core and the introduction of the libngu layer (MicroPython). Commit <code>b18723dd</code> from <strong>March 1, 2021</strong> swapped:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># v3.2.2 (correct)                 # v4.0.0+ (vulnerable)</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>seed <span class="op">=</span> <span class="bu">bytearray</span>(<span class="dv">32</span>)                seed <span class="op">=</span> random.<span class="bu">bytes</span>(<span class="dv">32</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>rng_bytes(seed)                     <span class="co"># → ngu.random.bytes → libngu</span></span></code></pre></div>
+<p>and <code>shared/random.py</code> mapped this call to <code>ngu.random.bytes</code> <a href="https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware"><sup>18</sup></a>. The change shipped in release <strong>v4.0.0 (2021-03-17)</strong>; Coinkite’s official advisory’s confirmed scope covers Mk2/Mk3 <strong>4.0.1–4.1.9</strong>, while Block’s source-code analysis also includes v4.0.0 — given this boundary discrepancy, a conservative posture should be assumed <a href="https://news.futunn.com/en/post/77070738/multiple-layers-of-protection-still-breached-coldcard-s-random-number"><sup>7</sup></a>.</p>
+<figure>
+<img src="../assets/en/fig1_seed_path.png" alt="RNG path: intended vs. actual" />
+<figcaption aria-hidden="true">RNG path: intended vs. actual</figcaption>
+</figure>
+<h3 id="one-character-ifndef-instead-of-if">3.2. One Character: <code>#ifndef</code> Instead of <code>#if</code></h3>
+<p>Libngu tried to guard against exactly this scenario — a compile-time guard was meant to <strong>refuse to build</strong> if the hardware TRNG were unavailable:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">extern</span> <span class="dt">uint32_t</span> rng_get<span class="op">(</span><span class="dt">void</span><span class="op">);</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="pp">#define CHIP_TRNG_32</span><span class="op">()</span><span class="pp"> rng_get</span><span class="op">()</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="pp">#ifndef MICROPY_HW_ENABLE_RNG</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="pp">#error &quot;get a HW TRNG plz&quot;</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="pp">#endif</span></span></code></pre></div>
+<p>The problem lies in the semantics of <code>#ifndef</code>: it tests whether a definition <strong>exists</strong>, not whether it is true. The macro in the production <code>mpconfigboard.h</code> <strong>does exist</strong> — with a value of <code>0</code>. So the guard silently passed on every build for more than five years; as the Wizardsardine team aptly put it, <em>“a single character separated this guard from its purpose: <code>#if</code> instead of <code>#ifndef</code>”</em> <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>24</sup></a>. Because the board-local implementation exported <code>random32()</code>/<code>random_buffer()</code> rather than the global <code>rng_get()</code> symbol, libngu’s reference resolved at the linker level to the MicroPython implementation — where the selector <code>#if MICROPY_HW_ENABLE_RNG</code> (this time checking the <strong>value</strong>) took the <code>#else</code> branch: the software Yasmarang <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>18</sup></a>.</p>
+<p>This explains the paradox that long confused commentators: <strong>the hardware TRNG was present, functional, and used by other firmware functions</strong> for the entire vulnerability window. Code reviews could confirm the generator existed and was invoked “somewhere” in the code — nobody verified the end-to-end symbol resolution from the seed-generation call site to the actual entropy source <a href="https://crypto.news/coldcard-rng-flaw-bitcoin-wallet-ai-audit/"><sup>9</sup></a>. The bug lived <strong>at the linker level, not in readable source</strong>, making it a textbook example of a failure at an integration seam <a href="https://thriveinmarkets.com/market-insights/coldcard-hack-explained-2026-08/"><sup>52</sup></a>.</p>
+<h3 id="two-yasmarangs-where-the-randomness-came-from">3.3. Two Yasmarangs: Where the “Randomness” Came From</h3>
+<p>Yasmarang is a general-purpose PRNG built into MicroPython (upstream, May 2018) — non-cryptographic, designed for development boards without hardware RNG <a href="https://blog.coinkite.com/entropy-technical-backgrounder/"><sup>21</sup></a>. On the vulnerable path, <strong>two</strong> instances ran, and the result was their XOR <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode c"><code class="sourceCode c"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Yasmarang A — MicroPython fallback behind rng_get(); one-time init:</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>pad <span class="op">=</span> <span class="op">*(</span><span class="dt">uint32_t</span> <span class="op">*)</span>MP_HAL_UNIQUE_ID_ADDRESS <span class="op">^</span> SysTick<span class="op">-&gt;</span>VAL<span class="op">;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>n   <span class="op">=</span> RTC<span class="op">-&gt;</span>TR<span class="op">;</span>      <span class="co">// real-time clock time-of-day</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>d   <span class="op">=</span> RTC<span class="op">-&gt;</span>SSR<span class="op">;</span>     <span class="co">// RTC sub-seconds</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="co">// Yasmarang B — libngu&#39;s own state; on Mk2/Mk3, public constants only:</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="dt">static</span> <span class="dt">uint32_t</span> yasmarang_pad <span class="op">=</span> <span class="bn">0x0a8ce26f</span><span class="op">,</span> yasmarang_n <span class="op">=</span> <span class="dv">69</span><span class="op">,</span> yasmarang_d <span class="op">=</span> <span class="dv">233</span><span class="op">;</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="dt">uint32_t</span> chip <span class="op">=</span> CHIP_TRNG_32<span class="op">();</span>   <span class="co">// = rng_get() → Yasmarang A</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a>chip <span class="op">^=</span> my_yasmarang<span class="op">();</span>           <span class="co">// Yasmarang B</span></span></code></pre></div>
+<p>Each of these streams is deterministic once the initialization parameters and the number of prior calls are known; the XOR of two reproducible streams is itself reproducible — <strong>XOR does not create entropy</strong> <a href="https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware"><sup>18</sup></a>. The built-in “health checks” also passed: libngu’s <code>chip == last</code> check rejected adjacent repeats (a PRNG normally doesn’t produce them), and the <code>len(set(seed)) &gt; 4</code> assertion in <code>generate_seed()</code> only catches trivial generator lock-ups <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>18</sup></a>. This is exactly why the incident is a lesson about <strong>false confidence from statistical tests</strong> — those tests verify properties of the stream, not its unpredictability to an outside observer.</p>
+<p>What matters for the attacker’s model: <code>UID_low32</code> is not a secret — it’s production metadata baked into the chip. The Wizardsardine team notes that the UID slice used encodes the die’s physical coordinates on the silicon wafer (lot/wafer numbers, X/Y coordinates) and <em>“likely fits within a 16-bit space,”</em> not even providing the full 32 bits of variability nominally claimed; moreover, <code>UID_low32 ⊕ SysTick</code> collapses into a single 32-bit <code>pad</code> anyway — nominal input bits <strong>cannot simply be added together</strong> <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>24</sup></a>.</p>
+<h3 id="reconstructing-the-numbers-where-40-and-72-bits-come-from">3.4. Reconstructing the Numbers: Where 40 and 72 Bits Come From</h3>
+<p>Following Block’s and BlockSec’s methodology, “~40 bits” for Mk2/Mk3 is an <strong>enumeration ceiling assuming a known UID and independent clock fields</strong>, not cryptographic entropy in the NIST sense <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>:</p>
+<div class="table-wrap"><table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Initialization input (Mk2/Mk3)</th>
+<th>Candidates</th>
+<th>Enumeration cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>UID_low32</code> known (chip metadata)</td>
+<td>1</td>
+<td>2⁰</td>
+</tr>
+<tr>
+<td><code>SysTick-&gt;VAL</code> at boot</td>
+<td>80,000</td>
+<td>2^16.29</td>
+</tr>
+<tr>
+<td><code>RTC-&gt;TR</code> (second of day)</td>
+<td>86,400</td>
+<td>2^16.40</td>
+</tr>
+<tr>
+<td><code>RTC-&gt;SSR</code> (sub-seconds)</td>
+<td>256</td>
+<td>2⁸</td>
+</tr>
+<tr>
+<td><strong>Combined ceiling</strong></td>
+<td>80,000 × 86,400 × 256 = 1,769,472,000,000</td>
+<td><strong>2^40.69</strong> (avg. 2^39.69)</td>
+</tr>
+</tbody>
+</table></div>
+<p>If the RTC registers are static on a typical cold boot, only SysTick remains: the ceiling drops to <strong>~2^16.29</strong>; with a known UID, timers, and call history, there is <strong>exactly one stream (2⁰)</strong> <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>. It is also crucial to note that generating eight 32-bit words for a 256-bit seed does <strong>not multiply</strong> the search space — every word is a function of the same initial state <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>.</p>
+<p>For Mk4/Q/Mk5, the picture was “better” and, at the same time, more perverse. Boot added material from the secure elements, but <code>rng_seeding()</code> hashed 40 bytes (32 B from SE1, 8 B from SE2), <strong>kept only 4 bytes of the digest</strong>, and passed that to <code>reseed()</code>, which replaced only a single 32-bit word <code>pad</code> in generator B <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>18</sup></a>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>a <span class="op">=</span> callgate.read_rng(<span class="dv">1</span>)   <span class="co"># 32 B from SE1 (authenticated)</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> callgate.read_rng(<span class="dv">2</span>)   <span class="co"># 8 B from SE2 (ROM-options side)</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>n <span class="op">=</span> ngu.<span class="bu">hash</span>.sha256d(a <span class="op">+</span> b)</span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>n, <span class="op">=</span> ustruct.unpack(<span class="st">&#39;I&#39;</span>, n[<span class="dv">0</span>:<span class="dv">4</span>])   <span class="co"># ← only 32 bits get through</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>ngu.random.reseed(n)               <span class="co"># ← replaces ONLY yasmarang_pad</span></span></code></pre></div>
+<p>The rest of generator B’s state held public values, and the MicroPython fallback (A) wasn’t reseeded at all. Hence “~72 bits”: 2^41.27 timer states (120,000 × 86,400 × 256) × 2^32 reseed values gives a ceiling of <strong>2<sup>73.27<strong>, average attack work </strong>2</sup>72.27</strong>; but with a known fallback state (target’s UID + timers), only <strong>2^32 reseed values remain — an average of 2^31 attempts, i.e., trivially enumerable</strong> <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>13</sup></a>. Block called this construction a <em>“dangerous fail-open pattern”</em>: an exception early in boot, before the reseed executed, would leave the device in a known public initial state with zero added entropy <a href="https://www.techtimes.com/articles/322392/20260731/coldcard-hardware-wallet-hacked-via-firmware-bug-that-bypassed-rng-five-years.htm"><sup>3</sup></a>. The final SHA-256d hashing of 32 bytes in <code>generate_seed()</code> — nor the BIP-39 checksum — <strong>cannot expand the size of the possible input family</strong>: ≤ 2^32 candidates in yields ≤ 2^32 candidates out <a href="https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware"><sup>18</sup></a>.</p>
+<h3 id="the-mathematics-of-the-catastrophe-and-its-computational-verification">3.5. The Mathematics of the Catastrophe, and Its Computational Verification</h3>
+<p>The charts below compare effective search spaces and enumeration time; the values were independently recalculated for this report and are consistent with source estimates (Halborn: ~13 days at 1M keys/s for ~2^40; BlockSec: 2<sup>40.69/2</sup>73.27) <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>10</sup></a>.</p>
+<figure>
+<img src="../assets/en/fig2_search_space.png" alt="Comparison of search spaces" />
+<figcaption aria-hidden="true">Comparison of search spaces</figcaption>
+</figure>
+<figure>
+<img src="../assets/en/fig3_bruteforce_time.png" alt="Enumeration time vs. attacker power" />
+<figcaption aria-hidden="true">Enumeration time vs. attacker power</figcaption>
+</figure>
+<p>Three numerical conclusions organize the whole incident. First, <strong>Mk3 was doomed by definition</strong>: full enumeration of 2^40.69 at 1M candidates/s is ~20.5 days (average ~10 days), and at a 1B/s cluster — ~20 minutes; the attack required no exotic techniques, just patience and paid access to blockchain data for mass balance checking <a href="https://defimon.xyz/blog/coldcard-hack-july-2026"><sup>10</sup></a>. Second, <strong>Mk4/Q/Mk5 were saved by arithmetic, not architecture</strong>: a ceiling of 2^73.27 at 1B/s is ~361 years, which is why sweeps of these models did not appear — but the “known fallback state” mode reduces them to 2^32, i.e., minutes; that is why Coinkite correctly classified them as affected too (72 bits instead of 128) and mandated migration <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>7</sup></a>. Third, the cost per candidate isn’t pure random generation but SHA-256d + BIP-32 derivation + address computation — which slows the attack down, but as Ledger Donjon’s practical work on Trust Wallet showed, at 32 bits the entire “mnemonic → address” map is a matter of minutes <a href="https://www.ledger.com/blog/funds-of-every-wallet-created-with-the-trust-wallet-browser-extension-could-have-been-stolen"><sup>51</sup></a>.</p>
+<hr />
+<h2 id="seed-technology-the-formal-foundations-that-failed-and-the-ones-that-worked">4. Seed Technology: the Formal Foundations That Failed (and the Ones That Worked)</h2>
+<h3 id="bip-39-and-bip-32-what-actually-gets-randomized">4.1. BIP-39 and BIP-32: What Actually Gets Randomized</h3>
+<p>The security of an HD (hierarchical deterministic) wallet begins with a single number. BIP-39 generates <strong>entropy (ENT)</strong> 128–256 bits long, appends a checksum CS = ENT/32 leading bits of SHA-256, splits the result into 11-bit groups, and maps them to words from a 2,048-word dictionary: 12 words carry 128 bits of entropy (+4 checksum bits), 24 words carry 256 bits (+8 checksum bits) <a href="https://www.tradingview.com/news/newsbtc:105b214f2094b:0-coldcard-security-notice-puts-bitcoin-wallet-entropy-risk-back-in-focus/"><sup>2</sup></a>. The mnemonic then passes through <strong>PBKDF2-HMAC-SHA-512 with 2,048 iterations</strong> and the salt <code>"mnemonic" + passphrase</code>, yielding a 512-bit binary seed; from it, BIP-32 derives a key tree via HMAC-SHA-512 (hardened and normal derivation), with leaf keys living on the <strong>secp256k1</strong> curve. The consequence is fundamental and often underappreciated: <strong>the BIP-39 checksum, hash functions, and HD derivation itself add not a single bit of entropy</strong> — if ENT is weak, the entire superstructure is weak in a hereditary way, because every address of every account and path is a function of that same ENT <a href="https://www.kucoin.com/blog/coldcard-seed-generation-flaw-bitcoin-security"><sup>18</sup></a>.</p>
+<p>Hence the asymmetry this incident brutally exposed: an attack on the seed is a <strong>passive, offline, and scalable</strong> attack. The attacker doesn’t need to touch the device, phish the user, or break the PIN — it’s enough to narrow the set of candidate ENT values and compare their images (addresses) against the public ledger <a href="https://www.trmlabs.com/resources/blog/the-largest-hardware-wallet-exploit-of-2026-inside-the-usd-116-million-coldcard-hack"><sup>15</sup></a>. This shifts the entire weight of security to the moment of generation and the quality of the randomness source — consistent with the observation that <em>“a wallet’s fate is decided at the moment the seed is created, before PINs, steel plates, or air-gaps ever come into play”</em> <a href="https://news.futunn.com/en/post/77070738/multiple-layers-of-protection-still-breached-coldcard-s-random-number"><sup>1</sup></a>.</p>
+<h3 id="trng-prng-csprng-drbg-a-taxonomy-whose-violation-cost-130-million">4.2. TRNG, PRNG, CSPRNG, DRBG — a Taxonomy Whose Violation Cost $130 Million</h3>
+<p>Cryptographic engineering enforces a strict separation: a <strong>TRNG</strong> (true random number generator) draws entropy from physical phenomena (analog noise, oscillator jitter — on the STM32, an analog noise source validated via the <code>RNG_SR</code> registers); a <strong>PRNG</strong> is a deterministic state machine (Yasmarang, Mersenne Twister) with a finite state space; a <strong>CSPRNG/DRBG</strong> is a cryptographically designed automaton (e.g., NIST SP 800-90A constructions: Hash_DRBG, HMAC_DRBG, CTR_DRBG) that, given a secret and sufficiently entropic seed, produces output indistinguishable from random. The <strong>NIST SP 800-90B</strong> family of standards defines requirements for entropy sources: min-entropy estimation, source health tests (repetition count, adaptive proportion), and continuous monitoring of the noise source; the German AIS-31 is a similar industry benchmark. The Coldcard incident was a <strong>layer substitution</strong>: where a CSPRNG seeded from a TRNG was required, we found a plain PRNG seeded from data that wasn’t secret at all — which in CWE taxonomy corresponds to CWE-338 (Use of Cryptographically Weak PRNG), the same class as CVE-2023-31290 in Trust Wallet <a href="https://mallory.ai/vulnerabilities/CVE-2023-31290"><sup>48</sup></a>.</p>
+<p>A key design principle that failed here is <strong>fail-closed</strong>: if the desired entropy source is unavailable, the system should refuse to operate, not “quietly” degrade to a substitute. The <code>#error "get a HW TRNG plz"</code> guard was an attempt at fail-closed, but written via <code>#ifndef</code> it became fail-open — and in a <strong>silent</strong> variant at that: the device didn’t crash, mnemonics looked normal, statistical tests passed <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>24</sup></a>. A second principle is <strong>mixing independent sources with conditioning</strong>: the correct pattern is, e.g., <code>seed = KDF(TRNG ‖ SE ‖ user data)</code>, where compromising one component doesn’t degrade the result; Coldcard <em>claimed</em> this pattern (TRNG + two SEs + optional dice), but due to an integration bug, of the 40 bytes coming from the secure elements, only <strong>4 bytes</strong> reached the generator’s state <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>18</sup></a>.</p>
+<h3 id="the-role-of-secure-elements-in-coldcard-what-held-and-what-didnt">4.3. The Role of Secure Elements in Coldcard — What Held, and What Didn’t</h3>
+<p>The Coldcard Mk4 (and later Mk5) architecture is built around <strong>two secure elements from two different vendors</strong> — Microchip’s ATECC608B and Maxim’s DS28C36B — plus an STM32 microcontroller; the master secret is cryptographically split across all three chips, so that extracting it would require breaking all of them at once <a href="https://blog.coinkite.com/understanding-mk4-security-model/"><sup>53</sup></a>. On top of that: PIN splitting into two parts with <strong>anti-phishing words</strong> rendered from SE secrets, firmware-signature verification at boot with a hardware-driven “genuine” LED controlled by the SE, a transparent case for easier PCB inspection, and duress and brick-me PINs <a href="https://www.bitcoin.diy/reviews/coldcard-mk4"><sup>27</sup></a>. This model has historically withstood physical attacks well: in 2023, Ledger Donjon managed to laser-read part of the DS28C36 (SE2) EEPROM, but <strong>full master-seed recovery was not demonstrated</strong>, since material from SE1, SE2, and the MCU is required simultaneously <a href="https://coinkite.com/historical-disclosures"><sup>44</sup></a>.</p>
+<p>In the July catastrophe, this layer <strong>held completely</strong> — and that is precisely the bitter engineering irony of the event. No secure element was broken, key storage was not attacked, the PIN was not bypassed. The storage system was inviolable; what failed was the <strong>birth</strong> of the secret five years earlier, in a 30-millisecond window at first boot, in a firmware layer that no laser was ever needed to touch <a href="https://www.trmlabs.com/resources/blog/the-largest-hardware-wallet-exploit-of-2026-inside-the-usd-116-million-coldcard-hack"><sup>15</sup></a>. This is an important lesson in prioritization: the most “exotic” defense layers (anti-tamper, glitch detection) protect against attacks that require a lab, while an ordinary <code>#ifdef</code> bug offers an attacker global scale from a laptop.</p>
+<h3 id="user-supplied-entropy-dice-passphrase-multisig-seedxor">4.4. User-Supplied Entropy: Dice, Passphrase, Multisig, SeedXOR</h3>
+<p>Coinkite has for years promoted the <strong>Add Dice Rolls</strong> feature — the user rolls a physical six-sided die and enters the results, and the firmware hashes the sequence of rolls together with device material. Each roll contributes log₂6 ≈ 2.585 bits of independent entropy: <strong>50–98 rolls give ≥128 bits, 99+ rolls give ~256 bits</strong> — and the advisory confirms that seeds created with ≥50 honest, independent, private rolls <strong>are not at risk</strong> from this bug, because the flawed generator was, at that point, merely a harmless ingredient in the mix <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>7</sup></a>. The conditions matter: the rolls must be physical and fair, not recorded, not photographed, not dictated by a third party — any digital trace turns the user’s entropy into forgeable data <a href="https://wublock.substack.com/p/coldcards-five-year-vulnerability"><sup>7</sup></a>.</p>
+<p><strong>BIP-39 passphrase</strong> (the so-called 25th word) works differently: it does not fix the seed, but instead creates, via PBKDF2, a <strong>separate wallet</strong>; an attacker enumerating seeds lands on empty “bare” wallets, while funds behind a strong, unique passphrase sit outside the reach of pure seed enumeration <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>13</sup></a>. Two rational concerns remain: first, PBKDF2 at 2,048 rounds is weak stretching by modern hardware standards, so a short or predictable passphrase can be cracked once the seed is already known — a weak seed additionally narrows the passphrase search, which can buy hours or days but doesn’t solve the problem <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>; second, a passphrase becomes a single point of loss (forgotten = funds gone). That’s why the advisory treats passphrase as a time-buying barrier and still mandates migration for its users too <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>7</sup></a>.</p>
+<p><strong>Multisig</strong> (e.g., 2-of-3) reduces single-vendor risk only when the quorum isn’t composed entirely of affected devices — a multisig made purely of vulnerable Coldcards achieves nothing, whereas a cross-vendor multisig means one line of buggy code from one supplier isn’t enough to reach the signing threshold <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>11</sup></a>. The cost is operational complexity: xpubs, derivation paths, descriptor files, separate backups, inheritance planning. The Coldcard ecosystem also has <strong>SeedXOR</strong>: a mathematical split of the seed into parts (XOR-ing the components reconstructs the secret), an alternative to a simple backup split; it protects the backup against physical theft, but — like any deterministic transformation — it does not heal weak source entropy. The same caveat applies to <strong>BIP-85</strong> (deriving child seeds from a single root): the children inherit the quality of the root <a href="http://blog.coinkite.com/"><sup>47</sup></a>.</p>
+<hr />
+<h2 id="why-this-happened-three-layers-of-causes">5. Why This Happened: Three Layers of Causes</h2>
+<h3 id="the-technical-layer-a-chain-of-small-decisions-each-reasonable-on-its-own">5.1. The Technical Layer: A Chain of Small Decisions, Each “Reasonable” on Its Own</h3>
+<p>No single decision was outrageous; their combination was lethal. The migration to libsecp256k1 was substantively justified (a library from Bitcoin Core, the most thoroughly reviewed EC implementation in the world). A custom RNG wrapper instead of the MicroPython path — justified (control over the entropy source). Setting <code>MICROPY_HW_ENABLE_RNG (0)</code> — a consequence of the previous decision. The guard in libngu — good intent, wrong directive. Changing <code>generate_seed()</code> to the more convenient <code>random.bytes(32)</code> — a single line inside a commit spanning ~120 files, whose main narrative purpose was to remove GPL code <a href="https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware"><sup>26</sup></a>. Reviewers read a “crypto library diff,” not an “entropy-generation-system diff”; the hardware RNG shone through elsewhere in the codebase, so quality control got a false-positive signal <a href="https://crypto.news/coldcard-rng-flaw-bitcoin-wallet-ai-audit/"><sup>9</sup></a>.</p>
+<p>On top of this comes a <strong>bottomless process gap</strong>: no end-to-end test ever measured the actual entropy of seeds produced by the final firmware image — and this would have been a trivial control (e.g., generating N seeds on reference hardware with a known UID and checking for collisions/predictability, or a build-time assertion on the provenance of the <code>rng_get</code> symbol) <a href="https://thriveinmarkets.com/market-insights/coldcard-hack-explained-2026-08/"><sup>52</sup></a>. The static tests that did exist (adjacent-repeat checks, byte diversity) were structurally incapable of detecting determinism — a PRNG passes them by definition <a href="https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware"><sup>18</sup></a>.</p>
+<h3 id="the-organizational-layer-a-license-that-switched-off-many-eyes">5.2. The Organizational Layer: A License That Switched Off “Many Eyes”</h3>
+<p>The licensing angle is a documented backdrop to the critical commit. According to a timeline published by Foundation Devices CEO Zach Herbert: on July 28, 2020, the Foundation team unveiled the Passport wallet, built on Coldcard firmware then distributed under <strong>GPLv3</strong>; two days later, Novak announced a change in licensing direction, and in November 2020, Coinkite switched to <strong>MIT + Commons Clause</strong> — a clause banning commercial use of derivatives, which makes the code “publicly viewable” but not free/open-source under accepted definitions <a href="https://wublock.substack.com/p/coldcards-five-year-vulnerability"><sup>26</sup></a>. On <strong>March 1, 2021</strong>, a commit removing “the last remaining GPL code” (including libraries inherited from Trezor), within that same ~120-file package, changed seed generation; two weeks later, v4.0.0 shipped <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>.</p>
+<p>There is no evidence of malice — but there is a measurable structural effect: publishing code creates <strong>conditions</strong> for review, not review itself. It made no economic sense for outside experts to spend weeks auditing a library they legally couldn’t use in their own products; in practice, the critical RNG path waited five years for deep reading <a href="https://wublock.substack.com/p/coldcards-five-year-vulnerability"><sup>26</sup></a>. The incident itself has become the best-known counterargument to the shorthand “public code = audited code” — a point also underscored by Tangem CTO Andrew Lazutkin: open-source firmware <strong>should not be automatically equated with better security</strong> <a href="https://www.forbes.com/sites/boazsobrado/2026/08/04/i-did-everything-right-ai-warning-after-116-million-bitcoin-hack/"><sup>17</sup></a>.</p>
+<h3 id="the-cultural-layer-marketing-orthodoxy-and-a-retirement-attack-that-happened-to-itself">5.3. The Cultural Layer: Marketing Orthodoxy and a “Retirement Attack” That Happened to Itself</h3>
+<p>Coldcard built its brand on being the “guardian of orthodoxy”: Bitcoin-only (everything else is “a scam”), air-gap as a fetish (USB = “one click from losing everything”), the slogan <strong>“Sleep at Night Technology”</strong> <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>. In October 2021 — <strong>seven months after the bug was already in production code</strong> — Coldcard’s official X account explained the concept of a <em>retirement attack</em>: <em>“this is when a project’s creators could leave a ‘bug’ in entropy generation to later seize funds”</em> — and claimed that thanks to dice, Coldcard made such an attack <strong>impossible</strong> <a href="https://cryptonews.net/news/security/33263254/"><sup>26</sup></a>. That tweet was never deleted and survives as self-parody: the company correctly described the risk class, offered a working mitigation (indeed — 50 dice rolls protected users who used them <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>7</sup></a>), but failed to close the default path most of its customers actually used.</p>
+<p>Against this cultural backdrop lies a reinforcement mechanism: Coldcard was one of the most frequently recommended wallets in the community (Reddit hosts an 11-minute compilation of influencer recommendations), so the vulnerability landed squarely on the cohort of <strong>the most security-conscious, wealthiest long-term hodlers</strong> — which explains the unusual, “individual” profile of victim addresses <a href="https://x.com/glxyresearch/status/2083560940469981591"><sup>26</sup></a>. After disclosure, CryptoQuant recorded an outflow — into self-custody? The opposite: a spike in small exchange deposits to 7,300 BTC daily, active addresses jumping from ~645,000 to ~1M, and 39,600 BTC in sub-1-BTC transfers — behavior last comparable to FTX’s bankruptcy day, only in the opposite direction <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>.</p>
+<h3 id="a-new-factor-the-ai-paradigm">5.4. A New Factor: the AI Paradigm</h3>
+<p>In his communications, Novak named as a real suspect <strong>AI-assisted code review</strong>: <em>“AI can now find latent bugs faster than even the most seasoned experts; if your firmware is public, assume attackers and defenders alike are already reading it”</em> <a href="https://www.forbes.com/sites/boazsobrado/2026/08/04/i-did-everything-right-ai-warning-after-116-million-bitcoin-hack/"><sup>8</sup></a>. The thesis has some empirical backing: community members claimed Claude Code and GLM-5.2 found the flawed RNG path in ~8 and ~20 minutes respectively (tests not independently reproduced), Coinkite admitted it had previously used AI review itself and <strong>failed to catch</strong> the bug, and a parallel wave of AI audits of other wallet codebases uncovered 85 further critical entropy-handling defects <a href="https://crypto.news/coldcard-rng-flaw-bitcoin-wallet-ai-audit/"><sup>5</sup></a>. The broader context is telling: on May 29, 2026, researcher Taylor Hornby used Claude Opus 4.8 to find a dormant flaw dating to 2022 in Zcash Orchard enabling silent ZEC forgery, and Anthropic reported cryptanalysis of HAWK and 7-round AES-128 with the help of Claude Mythos <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>. Critics rightly point out that a build flag disabling the TRNG is a <strong>human engineering failure</strong> that a conventional review should have caught years before any model came along <a href="https://www.forbes.com/sites/boazsobrado/2026/08/04/i-did-everything-right-ai-warning-after-116-million-bitcoin-hack/"><sup>17</sup></a> — but that doesn’t change the fact that the economic threshold for mass offensive auditing of public code just collapsed, which is a cold shower for every vendor.</p>
+<hr />
+<h2 id="the-owner-under-the-microscope-rodolfo-novak-nvk-posts-jabs-and-contradictions">6. The Owner Under the Microscope: Rodolfo Novak (NVK) — Posts, Jabs, and Contradictions</h2>
+<h3 id="crisis-communication-step-by-step">6.1. Crisis Communication, Step by Step</h3>
+<p>The timeline of the first hours is unflattering for Coinkite. <strong>Kevin Loaec of Wizardsardine</strong> publicly warned users of the anomaly at <strong>17:35 UTC on July 30</strong>; <strong>at 18:10 UTC, Novak replied that “there is no reason to panic”</strong> — while coins were already moving; that tweet vanished, and NVK later admitted it contained “incorrect” information <a href="https://cryptonews.net/news/security/33263254/"><sup>52</sup></a>. Coinkite’s advisory appeared ~30 hours after the sweeps began <a href="https://cryptobriefing.com/galaxy-research-coldcard-btc-attack-1367/"><sup>42</sup></a>. On July 31, NVK published (and pinned — it is still up) a full apology: <em>“I’m sorry and I’m devastated… We take full responsibility for the firmware bug,”</em> with a list of actions: a hotfix removing the fallback, seed migration, support for police and insurance reports, and cooperation with on-chain investigators <a href="https://x.com/nvk/status/2083216713693151552"><sup>25</sup></a>. In the following days, the company destroyed its remaining stock of devices running the flawed firmware and paused shipments <a href="https://www.bnnbloomberg.ca/markets/crypto/2026/08/04/hackers-drain-more-than-140m-in-bitcoin-from-devices-made-by-canadian-firm/"><sup>8</sup></a>.</p>
+<p>At the same time, two elements of the communication were viewed by the community as <strong>evasive or “cheap” in effect</strong>. The first was shifting the narrative burden onto the “AI paradigm” — true as an industry warning, but functioning rhetorically as a shift of blame from an engineering fracture onto “the times we live in” <a href="https://www.forbes.com/sites/boazsobrado/2026/08/04/i-did-everything-right-ai-warning-after-116-million-bitcoin-hack/"><sup>17</sup></a>. The second was the <strong>data-retention</strong> matter: to warn customers, Coinkite sent emails to buyers <strong>going back to 2019</strong> — while it had previously stated it wiped data after ~90 days (Halborn says 120 days); as one comment put it, “a privacy-first brand can’t quietly hold seven years of customer data and only reveal it during a crisis” <a href="https://www.halborn.com/blog/post/explained-the-coldcard-hack-july-2026"><sup>52</sup></a>. On August 7, a blog note appeared about a “temporary change to data-retention and customer-data-blanking practices” <a href="http://blog.coinkite.com/"><sup>47</sup></a>.</p>
+<h3 id="deleted-posts-and-the-receipts-archive">6.2. Deleted Posts and the “Receipts” Archive</h3>
+<p>In the first week of August, NVK began <strong>selectively deleting historical posts</strong>. The best-documented case: a November 2024 tweet suggesting that a counterfeit Blockclock (a Coinkite product) could be <em>“a backdoor into people’s home networks”</em> — vanished; Bitcoin Core developer Peter Todd published a screenshot from his phone’s cache on August 5 <a href="https://cryptonews.net/news/security/33263254/"><sup>22</sup></a>. Also deleted: a post calling Erin Malone a “Lightning influencer” after she pushed back on the thesis that “Lightning barely works” — Malone commented: <em>“besides the hardware competitors he tried to trample, he went just as hard after Lightning”</em> <a href="https://cryptonews.net/news/security/33263254/"><sup>22</sup></a>. Coinkite critic Greg Tonoski accused the company of removing the entry <em>“Unnamed v.4.0.0 security issue”</em> from its historical-disclosures page (the company responded to the accusation, so the question of improper removal is disputed; the Wayback Machine has no snapshot of that URL) <a href="https://cryptonews.net/news/security/33263254/"><sup>22</sup></a>. Zach Herbert noted an asymmetry: it is NVK’s posts being deleted, not those of the co-founder (<span class="citation" data-cites="switck">@switck</span>/<span class="citation" data-cites="DocHex">@DocHex</span>) — <em>“I assumed a litigation hold was in place, in which case NVK wouldn’t be deleting tweets”</em> <a href="https://cryptonews.net/news/security/33263254/"><sup>22</sup></a>. A volunteer archive, <code>nvk.wtf/receipts</code>, sprang up <a href="https://cryptonews.net/news/security/33263254/"><sup>22</sup></a>.</p>
+<h3 id="a-history-of-slinging-venom-at-competitors-a-chronicle">6.3. A History of “Slinging Venom” at Competitors — A Chronicle</h3>
+<p>NVK’s marketing relied for years on aggressive criticism of rivals; after the incident, those words came back to him like a boomerang:</p>
+<div class="table-wrap"><table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>When</th>
+<th>Target</th>
+<th>Content / event</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2019–2025</td>
+<td>Trezor</td>
+<td>criticism of the lack of a secure element, FUD about the architecture; later, on the Trezor Safe 7 (2025-10-24): <em>“Funny how after years of FUD, they end up borrowing the multi-SE concept from COLDCARD… Bluetooth is garbage… ‘quantum-ready’ is marketing mush… painting it orange doesn’t make a shitcoin-scam less of a scam”</em> <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a></td>
+</tr>
+<tr>
+<td>2020</td>
+<td>Foundation Passport</td>
+<td>accused of “borrowing” Coldcard firmware (Passport started on GPLv3); the conflict ended with Coinkite’s switch to the Commons Clause license <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a></td>
+</tr>
+<tr>
+<td>repeatedly</td>
+<td>SeedSigner (DIY)</td>
+<td>criticism of using a Raspberry Pi as a signing device <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a></td>
+</tr>
+<tr>
+<td>repeatedly</td>
+<td>Lightning Network</td>
+<td>public claims that “Lightning barely works,” clashes with commentators <a href="https://cryptonews.net/news/security/33263254/"><sup>22</sup></a></td>
+</tr>
+<tr>
+<td>2023</td>
+<td>Ledger (industry context)</td>
+<td>NVK was among the loud critics of Ledger Recover — a service splitting the seed into 3 fragments held by KYC’d custodians, introduced via a firmware update against the prior promise that “the key never leaves the device” <a href="https://www.tradingview.com/news/cryptodaily:19a7c7ea0094b:0-ledger-comes-under-fire-over-seed-phrase-recovery-service-fiasco/"><sup>37</sup></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>After July 30, 2026, the community’s response was harsh. User Seed (<span class="citation" data-cites="sesi_the_man">@sesi_the_man</span>) published a 4-minute compilation of years of “trolling and FUD” with the comment: <em>“he should have spent more energy checking his own work than dunking on everyone else’s”</em> <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>. Some commentators (ForkLog) went further, diagnosing <strong>“toxic maximalism” as an indirect cause of the disaster</strong>: a culture of self-assurance and dismissiveness toward other people’s threat models fosters organizational blindness to one’s own <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>. Two things should nonetheless be separated: NVK’s marketing jabs were often substantively not wrong (Trezor genuinely lacked an SE — which Kraken Security Labs exploited to extract a seed via voltage glitching in ~15 minutes with physical access <a href="https://www.hackster.io/news/kraken-security-labs-can-now-voltage-glitch-trezor-wallet-cryptocurrency-away-f1ee6cc76933"><sup>30</sup></a>; Ledger Recover genuinely broke an architectural promise <a href="https://www.tradingview.com/news/cryptodaily:19a7c7ea0094b:0-ledger-comes-under-fire-over-seed-phrase-recovery-service-fiasco/"><sup>38</sup></a>). <strong>The problem isn’t the content of the criticism, but the asymmetry of standards</strong>: Coldcard turned out to be more “hackable” than the devices it mocked, and in the worst possible layer — key generation <a href="https://www.trmlabs.com/resources/blog/the-largest-hardware-wallet-exploit-of-2026-inside-the-usd-116-million-coldcard-hack"><sup>15</sup></a>.</p>
+<h3 id="balance-sheet-what-was-cheap-in-the-owners-behavior-and-what-was-exemplary">6.4. Balance Sheet: What Was “Cheap” in the Owner’s Behavior, and What Was Exemplary</h3>
+<p>For fairness, let’s separate the assessment. <strong>Exemplary</strong>: a fast patch for all models and paths (07/31), a clear advisory with the rule “what matters is the firmware in place at the moment the seed was generated,” an honest admission that an update doesn’t fix an already-generated seed, an offer of documentation for police and insurers, and cooperation with trackers <a href="https://x.com/nvk/status/2083216713693151552"><sup>25</sup></a>, destruction of the defective stock <a href="https://www.cbc.ca/news/world/bitcoin-coinkite-security-hack-9.7295582"><sup>8</sup></a>. <strong>Questionable</strong>: the initial “no need to panic” while a drain was in progress <a href="https://thriveinmarkets.com/market-insights/coldcard-hack-explained-2026-08/"><sup>52</sup></a>; the AI-as-co-culprit narrative <a href="https://www.forbes.com/sites/boazsobrado/2026/08/04/i-did-everything-right-ai-warning-after-116-million-bitcoin-hack/"><sup>17</sup></a>; the data-retention contradiction <a href="https://thriveinmarkets.com/market-insights/coldcard-hack-explained-2026-08/"><sup>52</sup></a>; the mass deletion of posts (including ones about competitors) at a time when a litigation-hold standard should have applied <a href="https://cryptonews.net/news/security/33263254/"><sup>22</sup></a>; and — most damaging in symbolic terms — the 2021 declaration that an attack on entropy was “impossible,” made at a moment when the attack had already been baked into every newly generated seed for seven months <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>. None of this proves bad faith, but it documents a mechanism every engineering postmortem should name plainly: <strong>the organization believed its own marketing faster than it believed its own verification pipeline</strong>.</p>
+<hr />
+<h2 id="precedents-and-industry-context-the-bad-entropy-class-is-not-new">7. Precedents and Industry Context: the “Bad Entropy” Class Is Not New</h2>
+<p>The Coldcard incident is the largest, but not the first, well-documented representative of a class of failures — <strong>compromise at the moment of generating or handling randomness</strong>. The table below shows the industry had all the data it needed to foresee this scenario:</p>
+<div class="table-wrap"><table>
+<colgroup>
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+<col style="width: 20%" />
+</colgroup>
+<thead>
+<tr>
+<th>Year</th>
+<th>Product</th>
+<th>Mechanism</th>
+<th>Impact</th>
+<th>Lesson</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>2020</td>
+<td>Trezor One / Model T</td>
+<td>no SE: voltage-glitching the STM32F2/F4 allows, in ~15 min with physical access, dumping flash and recovering the encrypted seed (Kraken Security Labs)</td>
+<td>physical vulnerability; mitigation: BIP-39 passphrase</td>
+<td>a seed without an SE needs a cognitive layer <a href="https://www.hackster.io/news/kraken-security-labs-can-now-voltage-glitch-trezor-wallet-cryptocurrency-away-f1ee6cc76933"><sup>30</sup></a></td>
+</tr>
+<tr>
+<td>11.2022–2023</td>
+<td>Trust Wallet (extension)</td>
+<td>Mersenne Twister <code>mt19937</code> seeded with <strong>32 bits</strong> → ~4 billion mnemonics; Ledger Donjon detected it 3 days after launch; in-the-wild exploit XII.2022/III.2023 (CVE-2023-31290)</td>
+<td>~$30M at risk; full “address → key” map in minutes</td>
+<td>a 32-bit seed is effectively a public key; hot wallet ≠ cold <a href="https://www.ledger.com/blog/funds-of-every-wallet-created-with-the-trust-wallet-browser-extension-could-have-been-stolen"><sup>48</sup></a><a href="https://x.com/P3b7_/status/1650847937251909635"><sup>50</sup></a></td>
+</tr>
+<tr>
+<td>2018→2024</td>
+<td>Trust Wallet iOS (legacy)</td>
+<td><code>trezor-crypto rand.c</code> seeded with <code>srand(time(NULL))</code> → search space = seconds (CVE-2024-23660)</td>
+<td>wallets from 2018 reconstructable</td>
+<td>time as a seed = zero entropy <a href="https://secbit.io/blog/en/2024/01/19/trust-wallets-fomo3d-summer-vuln/"><sup>46</sup></a></td>
+</tr>
+<tr>
+<td>2023</td>
+<td>Ledger (Recover)</td>
+<td>firmware enables exporting the seed in 3 encrypted fragments to KYC’d custodians</td>
+<td>crisis of trust, service delay, commitment to open-source the code</td>
+<td>“the key never leaves the device” is a binary property <a href="https://www.tradingview.com/news/cryptodaily:19a7c7ea0094b:0-ledger-comes-under-fire-over-seed-phrase-recovery-service-fiasco/"><sup>37</sup></a></td>
+</tr>
+<tr>
+<td>08.2024</td>
+<td>class of signing devices</td>
+<td><strong>Dark Skippy</strong>: malicious firmware embeds seed fragments in Schnorr signature nonces; extraction of 12 words in ~2 signatures via Pollard’s Kangaroo</td>
+<td>proof-of-concept on a laptop; mitigations: anti-exfil, firmware verification, multisig</td>
+<td>a signature is a side channel — not just the RNG is at risk, but also the nonce <a href="https://darkskippy.com/"><sup>32</sup></a></td>
+</tr>
+<tr>
+<td>07–08.2026</td>
+<td><strong>Coldcard Mk2–Mk5/Q</strong></td>
+<td>RNG fallback: Yasmarang from UID+timers instead of a TRNG; ≤2^40.69 / ≤2^73.27 states</td>
+<td><strong>1,596–2,055 BTC</strong> stolen; the largest HW-wallet exploit in history</td>
+<td>seed generation fail-open for 5 years; an air-gap doesn’t protect against a bad birth of the key <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>15</sup></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>The collective conclusion is bleak: in all these cases, <strong>Bitcoin’s cryptography (secp256k1, SHA-256) remained untouched</strong> — it was the engineering shell around it that failed: the PRNG seed, a compile flag, a signature nonce, the firmware trust model. Coldcard differs in scale and victim profile (the most secured hodlers) and in that, for the first time, a mass exploit required <strong>zero</strong> interaction with the victim or their device <a href="https://techcrunch.com/2026/08/04/hackers-steal-over-130-million-by-exploiting-bug-in-offline-hardware-wallets/"><sup>15</sup></a>. It’s also worth noting that the community spent years fearing the wrong enemy: <em>“Bitcoin holders spent two years worrying that quantum computers would reach into cold storage… a compile flag got there first”</em> <a href="https://www.forbes.com/sites/boazsobrado/2026/08/04/i-did-everything-right-ai-warning-after-116-million-bitcoin-hack/"><sup>17</sup></a>.</p>
+<hr />
+<h2 id="how-to-protect-yourself-from-emergency-migration-to-vendor-resilient-architecture">8. How to Protect Yourself: from Emergency Migration to Vendor-Resilient Architecture</h2>
+<h3 id="who-is-was-at-risk-a-decision-matrix">8.1. Who Is (Was) at Risk — A Decision Matrix</h3>
+<p>What matters is exclusively the <strong>device and firmware at the moment the seed was generated</strong>, not the version installed today; importing a vulnerable seed into another wallet carries the weakness along with it <a href="https://www.redsecuretech.co.uk/blog/post/coldcard-firmware-vulnerability-leads-to-70m-bitcoin-theft/1367"><sup>7</sup></a>:</p>
+<div class="table-wrap"><table>
+<colgroup>
+<col style="width: 33%" />
+<col style="width: 33%" />
+<col style="width: 33%" />
+</colgroup>
+<thead>
+<tr>
+<th>Configuration</th>
+<th>Status</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Seed on Mk2/Mk3 fw <strong>4.0.1–4.1.9</strong> (conservatively: from 4.0.0) without dice</td>
+<td><strong>critically at risk</strong> (~40 bits)</td>
+<td>immediate migration of funds to a new seed</td>
+</tr>
+<tr>
+<td>Seed on Mk4/Mk5 before <strong>5.6.0</strong> (Std) / <strong>6.6.0X</strong> (Edge) or Q before <strong>1.5.0Q</strong> / <strong>6.6.0QX</strong></td>
+<td>at risk (~72 bits)</td>
+<td>priority migration</td>
+</tr>
+<tr>
+<td>Seed with <strong>≥50 honest, private dice rolls</strong></td>
+<td>outside the reach of this bug</td>
+<td>no action needed for this vector (note: independent “advanced feature” defects — see below)</td>
+</tr>
+<tr>
+<td>Seed + <strong>strong, unique BIP-39 passphrase</strong></td>
+<td>funds outside pure seed enumeration</td>
+<td>migrate anyway when convenient <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>7</sup></a></td>
+</tr>
+<tr>
+<td>Multisig with a quorum partly made of other vendors</td>
+<td>depends on quorum composition</td>
+<td>migrate the vulnerable members <a href="https://www.redsecuretech.co.uk/blog/post/coldcard-firmware-vulnerability-leads-to-70m-bitcoin-theft/1367"><sup>11</sup></a></td>
+</tr>
+<tr>
+<td>Mk1 / seeds from before 2021 / TAPSIGNER, OPENDIME, SATSCARD</td>
+<td>out of regression scope</td>
+<td>no action <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>7</sup></a></td>
+</tr>
+</tbody>
+</table></div>
+<p>Additional note from the Wizardsardine team: regardless of the seed, on affected firmware, <strong>advanced device features that use the RNG are also flawed</strong>, and dice don’t help there — so a firmware update is required even for owners of “safe” seeds <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>24</sup></a>.</p>
+<h3 id="migration-procedure-engineering-version-based-on-the-manufacturers-advisory">8.2. Migration Procedure (Engineering Version, Based on the Manufacturer’s Advisory)</h3>
+<p>Coinkite’s advisory defines a safe ritual whose most important rule is: <strong>stay calm and verify every step — rushing the migration can be more dangerous than the vulnerability itself</strong> <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>7</sup></a>. Sequence: (1) update the firmware to the patched version (Mk2/Mk3 ≥ 4.2.0; Mk4/Mk5 ≥ 5.6.0 Std / 6.6.0X Edge; Q ≥ 1.5.0Q Std / 6.6.0QX Edge — the Standard and Edge tracks are disjoint, and a higher Edge number does <strong>not</strong> mean it’s patched); (2) on a blank device, generate a <strong>new</strong> seed, record it, and verify the backup and the XFP fingerprint; (3) verify the receiving address on the device’s screen; (4) restore the old seed and send a <strong>small test transaction</strong>; (5) restore the new seed, confirm the XFP and that funds arrived; (6) only then move the rest; (7) keep the old backup until migration is fully confirmed <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>7</sup></a>. Owners of a single Mk2/Mk3 can alternatively use the <strong>dice-only</strong> path (<code>Import Existing → Dice Rolls</code>, ≥99 rolls), which hashes only the roll sequence and does not use the device’s generator — the roll sequence is secret key material: do not photograph it, do not save it digitally, do not type it into a computer <a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>7</sup></a>.</p>
+<p>There’s also the matter of a “race”: as long as the theft transaction sits in the mempool, a victim who still holds the key can try <strong>Replace-by-Fee</strong> with a higher fee — this only works before it’s mined, and with no guarantee <a href="https://crypto.news/galaxy-estimates-coldcard-exploit-may-have-stolen-up-to-2055-bitcoin/"><sup>54</sup></a>. Coinkite retains customer data for a limited time and cannot reach most owners — hence the appeal for community-driven distribution of the warning <a href="https://x.com/nvk/status/2083216713693151552"><sup>10</sup></a>.</p>
+<h3 id="target-architecture-configurations-resilient-to-vendor-failure">8.3. Target Architecture: Configurations Resilient to Vendor Failure</h3>
+<p>For significant amounts, expert advice converges on one pattern: <strong>don’t let a single line of code from a single vendor be sufficient to cause a loss.</strong> In practice: (a) <strong>cross-vendor 2-of-3 multisig</strong> with separate backups and a descriptor, with an equivalent of a recovery drill; (b) for single-sig — a seed generated with <strong>user-supplied entropy</strong> (≥50–99 rolls) or on a device with verifiable, up-to-date firmware; (c) a <strong>BIP-39 passphrase</strong> as an independent layer, backed up separately from the words; (d) splitting amounts: operational vs. deep cold storage; (e) periodic on-screen verification of receiving addresses (defense against address substitution on the host) <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>11</sup></a><a href="https://blog.coinkite.com/coldcard-mk3-seed-generation-warning/"><sup>7</sup></a>. Teams like Wizardsardine (Liana) document configurations with time-decaying keys and multisig as the default model for inheritance and long-term amounts <a href="https://wizardsardine.com/blog/coldcard-rng-vulnerability/"><sup>24</sup></a>.</p>
+<p>For the fundamental paranoid question — “should you even use a hardware wallet at all?” — the incident’s data suggest a nuanced answer: the Bitcoin protocol and the self-custody model itself <strong>did not fail</strong> — a specific vendor’s specific RNG implementation did; at the same time, part of the market over-corrected, moving small amounts to exchanges (accepting counterparty risk instead of implementation risk) <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>5</sup></a>. The engineering-correct response is not to abandon self-custody, but to <strong>diversify trust</strong>: multisig, user entropy, verifiable builds.</p>
+<h3 id="verification-hygiene-for-buyers-and-maintainers">8.4. Verification Hygiene for Buyers and Maintainers</h3>
+<p>At the user level: buy only through official channels (supply-chain implants are a real attack class — Dark Skippy even assumes pre-compromised devices <a href="https://darkskippy.com/"><sup>36</sup></a>); verify firmware checksums and signatures on update; follow the vendor’s historical-disclosures page (Coinkite’s page documents, among other things, Ledger Donjon’s 2023 laser chain against the Mk3 and the partial SE2 read on the Mk4 — proof that coordinated research works <a href="https://coinkite.com/historical-disclosures"><sup>44</sup></a>); treat every seed generated before the patch as compromised, <strong>even if the balance is untouched</strong> — attackers may be playing for time <a href="https://crypto.news/coldcard-rng-flaw-bitcoin-wallet-ai-audit/"><sup>15</sup></a>. At the organizational level (companies, foundations holding BTC): inventory every seed against the matrix in §8.1, a four-eyes migration procedure, an incident policy/report (Coinkite issues victims written summaries for police and insurance purposes <a href="https://x.com/nvk/status/2083216713693151552"><sup>25</sup></a>), and monitoring of your own addresses with on-chain alerts — in this incident, hours mattered <a href="https://thriveinmarkets.com/market-insights/coldcard-hack-explained-2026-08/"><sup>52</sup></a>.</p>
+<hr />
+<h2 id="consequences-legal-market-and-engineering">9. Consequences: Legal, Market, and Engineering</h2>
+<h3 id="the-legal-dimension-the-first-precedent-setting-case-for-a-faulty-rng">9.1. The Legal Dimension: the First Precedent-Setting Case for a “Faulty RNG”</h3>
+<p>A few days after disclosure, the threat of a <strong>class-action lawsuit</strong> began to take shape: Thomas Braziel (117 Partners) is analyzing product-liability claims and coordinating victims internationally; Brazilian holder Felipe Ojeda filed a police report and announced a complaint in Brazil <a href="https://primexbt.com/news/coinkite-faces-class-action-threat-as-coldcard-bug-costs-users-over-1300-btc/"><sup>31</sup></a>. Legal experts are divided on the odds: Cris Carrascosa (ATH21) points out that a non-custodial manufacturer has “zero regulatory liability over users’ funds” and that proving foreseeability of harm will be difficult; Ana Ojeda (Blend), by contrast, sees credible grounds to examine product-defect and negligence claims <a href="https://primexbt.com/news/coinkite-faces-class-action-threat-as-coldcard-bug-costs-users-over-1300-btc/"><sup>31</sup></a>. Regardless of the outcome, the case may set a precedent for hardware-wallet manufacturer liability — until now, RNG-class incidents have ended in settlements or voluntary refunds (Trust Wallet promised compensation to exploit victims <a href="https://x.com/P3b7_/status/1650847937251909635"><sup>50</sup></a>). Coinkite — a company that raised two funding rounds back in 2013 and doesn’t have Ledger’s sales scale — is unlikely to be able to voluntarily compensate ~$130M, which victims understand <a href="https://primexbt.com/news/coinkite-faces-class-action-threat-as-coldcard-bug-costs-users-over-1300-btc/"><sup>31</sup></a>.</p>
+<h3 id="the-market-dimension-a-dented-self-custody-model">9.2. The Market Dimension: a Dented Self-Custody Model</h3>
+<p>The scale of losses (~<strong>$116–133M</strong>, depending on tracker and the ~$64,700/BTC exchange rate as of 08/07 <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>) makes this the largest hardware-wallet exploit of 2026 and the third-largest crypto hack of the year (industry-wide losses exceeded $1.2B across 276 incidents) <a href="https://www.trmlabs.com/resources/blog/the-largest-hardware-wallet-exploit-of-2026-inside-the-usd-116-million-coldcard-hack"><sup>15</sup></a>. The on-chain reaction was immediate and paradoxical: active addresses rose from ~645,000 to ~1M, small exchange deposits spiked to 7,300 BTC — part of the hodler base re-priced its risk, preferring exchange counterparty risk to firmware implementation risk <a href="https://forklog.com/en/sleep-at-night-technology-how-a-coldcard-flaw-turned-peace-of-mind-into-a-nightmare/"><sup>26</sup></a>. The incident did not damage Bitcoin’s cryptography or the private-key model as such; it dented <strong>trust in the claim “air-gapped = safe,”</strong> showing that network isolation protects a secret after its birth, not during it <a href="https://www.tradingview.com/news/newsbtc:105b214f2094b:0-coldcard-security-notice-puts-bitcoin-wallet-entropy-risk-back-in-focus/"><sup>5</sup></a>.</p>
+<h3 id="patch-regression-a-hotfix-that-itself-needed-patching">9.3. Patch Regression: a Hotfix That Itself Needed Patching</h3>
+<p>A thorough engineering review must note a secondary episode: the July 31 hotfix, while restoring the hardware RNG path, introduced a <strong>separate availability regression</strong>. On the Mk4/Q family (STM32L4S), a seed error (SEIS) halts number generation, and <code>rng_get_or_fault()</code> did not implement the recovery sequence described in RM0432 (clearing SEIS, reading and discarding 12 words from RNG_DR, verification); the read loop only checked DRDY, so with the error latched, every attempt waited 10ms and threw <code>OSError(EFAULT)</code> — and key-order randomization happens <strong>before login</strong>, so the bug could block PIN entry and the update menu for the duration of a hardware session <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>. The strongest claim (“permanent bricking”) was <strong>not</strong> confirmed: the RNG registers reset in hardware, and the community author of PR #692 analyzed the fault on a register mock and did not reproduce it on real hardware; PR #693, merged August 5, added limited recovery, retries, and rejection of suspect samples <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>. Lesson: even a critical fix made under time pressure needs regression testing on hardware failure paths — precisely the ones nobody tested for five years, because “the TRNG obviously works.”</p>
+<h3 id="implications-for-security-engineering-a-design-checklist">9.4. Implications for Security Engineering (a Design Checklist)</h3>
+<p>The incident hands the industry a canon of practices that should enter the standard for designing any signing device: (1) <strong>entropy fallbacks must be fail-closed</strong> — no HW RNG means refuse to generate a key, never silently fall back to a PRNG; (2) build-time guards must check <strong>both the existence and the value</strong> of macros; (3) <strong>CI must verify symbol provenance</strong> in the final image (from the <code>generate_seed</code> call site to the entropy source), not just that a TRNG implementation exists somewhere in the tree; (4) an <strong>end-to-end entropy test</strong> on every release: generate N seeds on a known UID/timers and prove unpredictability <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>; (5) noise-source health per <strong>NIST SP 800-90B</strong> (rep-count, adaptive proportion) plus full handling of peripheral errors per the manufacturer’s documentation; (6) reseeding should initialize a <strong>cryptographic DRBG</strong> with the full material, not swap 32 bits of PRNG state <a href="https://engineering.block.xyz/blog/predictable-rng-fallback-and-32-bit-reseed-in-coldcard-firmware"><sup>18</sup></a>; (7) periodic, <strong>independent verification of entropy</strong> — a formal proposal made after the incident by Kraken’s CSO, calling for mandatory entropy testing across all hardware-wallet manufacturers <a href="https://crypto.news/coldcard-rng-flaw-bitcoin-wallet-ai-audit/"><sup>9</sup></a>. Hanging over all of this is a new audit reality: public code is now machine-read by attackers and defenders alike, and five years of a dormant bug is five years of free training material for an automated auditor “that never gets tired” <a href="https://wublock.substack.com/p/coldcards-five-year-vulnerability"><sup>52</sup></a>.</p>
+<hr />
+<h2 id="update-how-the-situation-developed-august-810-2026">10. Update: How the Situation Developed (August 8–10, 2026)</h2>
+<p><em>The following section was appended to the original version of the report (as of 08/09) after re-searching the news on 2026-08-10. Footnote numbering continues from the previous section (new sources: 57–63).</em></p>
+<h3 id="updated-loss-tally-galaxy-research-raises-the-confirmation-bar">10.1. Updated Loss Tally: Galaxy Research Raises the Confirmation Bar</h3>
+<p>On August 8, Galaxy Research published a revised, <strong>high-confidence</strong> estimate: <strong>1,719 BTC (~$111M)</strong> confirmed across more than 25 recognized transaction patterns within the three main waves, while total losses (including unconfirmed waves) are still estimated at <strong>&gt;$130M</strong> <a href="https://www.cryptotimes.io/2026/08/08/galaxy-research-confirms-111m-stolen-funds-in-coldcard-exploit/"><sup>57</sup></a>. The analyst leading the community investigation under the handle <span class="citation" data-cites="intangiblecoins">@intangiblecoins</span> reported receiving <strong>more than 250 victim reports</strong>, a significant share of which are still queued for verification — which by itself shows that the official figures remain a floor, not a ceiling <a href="https://www.cryptotimes.io/2026/08/08/galaxy-research-confirms-111m-stolen-funds-in-coldcard-exploit/"><sup>57</sup></a>. The difference versus the August 4 figures (1,596–2,055 BTC, see the table in §2.2) illustrates a typical dynamic in incidents like this: the confirmed core grows slowly and conservatively, while the maximum estimate remains higher and more uncertain.</p>
+<h3 id="scale-of-the-on-chain-outflow-the-largest-long-term-holder-move-since-december-2024">10.2. Scale of the On-Chain Outflow: the Largest Long-Term-Holder Move Since December 2024</h3>
+<p>On-chain data from August 7 confirms the scale of the panic described in §5.3 and §9.2, with a much more precise figure: <strong>roughly 210,000 BTC left long-term-holder (LTH) wallets</strong> in the week after the attack — the largest such move since December 2024 <a href="https://www.coindesk.com/markets/2026/08/07/coldcard-fallout-shows-up-onchain-as-210-000-bitcoin-leaves-old-wallets"><sup>58</sup></a>. Active addresses peaked at <strong>~978,000 on July 31</strong>, about 1.6× July’s daily average <a href="https://www.coindesk.com/markets/2026/08/07/coldcard-fallout-shows-up-onchain-as-210-000-bitcoin-leaves-old-wallets"><sup>58</sup></a>. This confirms the report’s thesis that the market’s reaction was not just funds moving between hardware wallets, but a mass, distrust-driven <strong>rethinking of custody models</strong> by holders with no direct connection to Coldcard — fear proved contagious well beyond Coinkite’s own customer base.</p>
+<h3 id="a-proposed-claim-buyback-fund-muneeb-alis-initiative">10.3. A Proposed Claim-Buyback Fund: Muneeb Ali’s Initiative</h3>
+<p>Stacks founder <strong>Muneeb Ali</strong> proposed creating a voluntary Bitcoin fund that would buy victims’ claims <strong>at face value</strong> — the victim gets immediate compensation in BTC, and the fund takes on the right to any funds eventually recovered, should law enforcement ever trace and seize the attacker’s coins; Ali said he was willing to personally seed the fund <a href="https://finance.yahoo.com/markets/crypto/articles/stacks-founder-proposes-bitcoin-fund-151600148.html"><sup>59</sup></a>. As of 08/10: this remains a <strong>proposal, not an operating mechanism</strong> — there’s no operator, no legal structure, and, crucially, no method to verify genuine victims that’s resistant to fraudulent claims or to gaming by the attacker themselves (e.g., submitting “victims” the attacker actually controls) <a href="https://finance.yahoo.com/markets/crypto/articles/stacks-founder-proposes-bitcoin-fund-151600148.html"><sup>59</sup></a>. In parallel, a bleaker phenomenon developed online: an address holding ~$36M of the stolen funds became a “graffiti wall” — victims pay small transaction fees to attach pleading messages to a UTXO begging for the funds to be returned, sometimes along with reward offers for information <a href="https://www.coindesk.com/markets/2026/08/05/you-stole-please-return-some-coldcard-hacker-s-wallet-becomes-a-graffiti-wall-of-pleas-and-hustles"><sup>60</sup></a>.</p>
+<h3 id="the-legal-front-law-firms-begin-formally-signing-up-clients">10.4. The Legal Front: Law Firms Begin Formally Signing Up Clients</h3>
+<p>The picture from §9.1 has come into sharper focus: the Chicago law firm <strong>Stoltmann Law Offices</strong>, which specializes in investment-fraud disputes, opened a formal intake of Coldcard victims for free case evaluation, citing possible product-liability and negligence claims <a href="https://stoltmannlaw.com/coldcard-wallet-bitcoin-theft-claims/"><sup>61</sup></a>. On the other side of the Thomas Braziel thread (117 Partners, mentioned in §9.1), Protos published a critical piece reminding readers that Braziel had previously been a <strong>claims broker in the FTX bankruptcy</strong>, controversially criticized for the terms on which he bought claims from desperate FTX victims — which should make Coldcard victims read his coordination offer cautiously and compare its terms against alternatives (including Ali’s proposal) <a href="https://protos.com/disgraced-ftx-claims-broker-is-now-soliciting-coldcard-victims/"><sup>62</sup></a>. The legal picture remains uncertain for the same reason as in §9.1: Coinkite’s terms of service almost certainly contain clauses disclaiming liability for software defects, which is the central legal battleground of any future case <a href="https://stoltmannlaw.com/coldcard-wallet-bitcoin-theft-claims/"><sup>61</sup></a>.</p>
+<h3 id="coinkite-formalizes-the-suspension-of-data-deletion">10.5. Coinkite Formalizes the Suspension of Data Deletion</h3>
+<p>The company confirmed and formalized the episode described in §6.1: Coinkite’s standard policy called for wiping customer records down to just an email address and country of residence after <strong>120 days</strong> from delivery (with an option for accelerated deletion on customer request); after the incident, the company <strong>temporarily suspended automatic deletion</strong>, citing “legal obligations arising from the security incident, including the preservation of records relevant to ongoing and anticipated legal proceedings” <a href="https://www.cryptotimes.io/2026/08/07/coldcard-maker-suspends-data-deletion-as-legal-proceedings-loom/"><sup>63</sup></a>. Coinkite did not disclose any specific lawsuit or plaintiff — the phrase “anticipated proceedings” is the company’s own characterization, typical of implementing a standard <em>legal hold</em> to avoid a spoliation claim, not an admission of a specific ongoing case <a href="https://www.cryptotimes.io/2026/08/07/coldcard-maker-suspends-data-deletion-as-legal-proceedings-loom/"><sup>63</sup></a>. Customers wanting the original, faster deletion policy restored can contact support individually <a href="https://www.cryptotimes.io/2026/08/07/coldcard-maker-suspends-data-deletion-as-legal-proceedings-loom/"><sup>63</sup></a>.</p>
+<h3 id="what-changes-in-the-overall-assessment">10.6. What Changes in the Overall Assessment</h3>
+<p>The new data does not change the core of the engineering diagnosis in Sections 3–4 — the root cause and the search-space mathematics remain the same. What does change are three elements of the picture: (1) the confirmed financial loss <strong>is still rising</strong>, not stabilizing, which shows the victim map remains incomplete ten days after the first wave; (2) the market reaction turned out to be deeper and broader than earlier data suggested (210,000 BTC is an order of magnitude larger than the typical panic from a single vendor-specific incident); (3) a <strong>secondary ecosystem</strong> is forming around the victims — law firms, claims brokers, voluntary funds — of uneven quality and intent, which is itself becoming a separate risk for victims that requires care when choosing a partner to pursue a claim.</p>
+<hr />
+<h2 id="final-conclusions">11. Final Conclusions</h2>
+<p>The Coldcard entropy hack is not a story about broken cryptography, but about a broken <strong>chain of verification</strong>: a single preprocessor directive, one commit inside a licensing-driven cleanup, and five years without an end-to-end test were enough for the market’s most security-branded Bitcoin wallet to generate keys from a space smaller than a good ATM PIN multiplied by time. The mathematics was merciless and reversible depending on the model: Mk3 (≤2^40.69 states) fell en masse, Mk4/Q/Mk5 (≤2^73.27) survived thanks to arithmetic, not architecture — and the “known fallback state” mode reduces even those to a trivial 2^32 <a href="https://blocksec.com/blog/coldcard-entropy-failure-seed-recovery"><sup>13</sup></a>. Three defensive layers worked and are now canon for self-custody: user-supplied entropy (≥50 dice rolls), a BIP-39 passphrase as a separate domain, and cross-vendor multisig <a href="https://www.redsecuretech.co.uk/blog/post/coldcard-firmware-vulnerability-leads-to-70m-bitcoin-theft/1367"><sup>7</sup></a>.</p>
+<p>On the human dimension, the incident struck a cohort that “did everything right,” exposing the limits of user responsibility: no ritual protects against a manufacturing defect in the randomness itself <a href="https://cryptonews.net/news/security/33241620/"><sup>28</sup></a>. On the cultural dimension, NVK’s story — from tweets about “impossible retirement attacks,” through jabs at Trezor, Ledger, Passport, and Lightning, to deleting posts during the week of the catastrophe — shows that <strong>a security authority must be periodically subjected to the same audit it applies to its competitors</strong> <a href="https://cryptonews.net/news/security/33263254/"><sup>26</sup></a>. On the industry dimension, Coldcard closes out a cycle of precedents (Trust Wallet’s 2^32, Dark Skippy, Trezor glitching, Ledger Recover) and opens an era in which AI auditing of public code turns “dormant” bugs into a matter of time, not chance. The engineering response is known and achievable: fail-closed entropy, symbol provenance in CI, end-to-end entropy tests, DRBG instead of PRNG, independent verification. The question left standing after July 2026 is not “does the next vendor have a bug like this,” but “who will prove they don’t — before the market does” <a href="https://thriveinmarkets.com/market-insights/coldcard-hack-explained-2026-08/"><sup>9</sup></a>.</p>
+<hr />
+<p><em>This material is for informational and educational purposes only and does not constitute investment, legal, or entity-specific security advice. Loss figures come from public on-chain analyses using different methodologies and may be revised; decisions about migrating funds should be based on the manufacturer’s current advisory and, where needed, expert advice.</em></p>
+</article>
+
+<footer>
+  <div class="foot-brand"><span class="mark">CK</span> Coldcard Entropy Hack 2026 — independent report</div>
+  <p><strong>Disclaimer:</strong> this material is for informational and educational purposes only and does not constitute investment, legal, or entity-specific security advice. Loss figures come from public on-chain analyses using different methodologies and may be revised. All 63 sources are linked directly at the relevant claims (superscript indices in the text).</p>
+  <p>Full source text in Markdown: <a href="Coldcard-Entropy-Hack-2026-Engineering-Analysis.md">Coldcard-Entropy-Hack-2026-Engineering-Analysis.md</a> · <a href="../index.html">wersja polska</a> · <a href="https://github.com/zi3lak/coldcard-entropy-hack-2026">GitHub repository</a>.</p>
+</footer>
+
+<a href="#" class="back-top" id="backTop" aria-label="Back to top">↑</a>
+<script src="../assets/report.js"></script>
+</body>
+</html>

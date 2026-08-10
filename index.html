@@ -6,241 +6,43 @@
 <title>Hack na entropię Coldcard (2026) — analiza inżynieryjna</title>
 <meta name="description" content="Kompletny raport inżynieryjny: przyczyna źródłowa, matematyka przestrzeni poszukiwań, oś czasu, precedensy i rekomendacje obronne po ataku na Coldcard, lipiec–sierpień 2026.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔓</text></svg>">
-<style>
-:root{
-  --bg:#f7f5f0;
-  --bg-elev:#ffffff;
-  --bg-inset:#eeece4;
-  --text:#1c1a16;
-  --text-dim:#5c584e;
-  --border:#ddd8cc;
-  --accent:#b5401f;
-  --accent-2:#8a5a00;
-  --link:#8a3a15;
-  --code-bg:#efece2;
-  --warn-bg:#fbeade;
-  --warn-border:#d98a3d;
-  --table-head:#e9e4d6;
-  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.05);
-  --maxw: 780px;
-  font-size: 17px;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#151310;
-    --bg-elev:#1c1915;
-    --bg-inset:#221e18;
-    --text:#eae5d9;
-    --text-dim:#a89e8c;
-    --border:#3a352b;
-    --accent:#e2734a;
-    --accent-2:#d9a441;
-    --link:#e2734a;
-    --code-bg:#211d16;
-    --warn-bg:#2a2015;
-    --warn-border:#8a5a1f;
-    --table-head:#241f17;
-    --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.35);
-  }
-}
-:root[data-theme="dark"]{
-  --bg:#151310;
-  --bg-elev:#1c1915;
-  --bg-inset:#221e18;
-  --text:#eae5d9;
-  --text-dim:#a89e8c;
-  --border:#3a352b;
-  --accent:#e2734a;
-  --accent-2:#d9a441;
-  --link:#e2734a;
-  --code-bg:#211d16;
-  --warn-bg:#2a2015;
-  --warn-border:#8a5a1f;
-  --table-head:#241f17;
-  --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 30px rgba(0,0,0,.35);
-}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{
-  margin:0; background:var(--bg); color:var(--text);
-  font-family: "Iowan Old Style","Georgia","Noto Serif",serif;
-  line-height:1.68;
-  -webkit-font-smoothing:antialiased;
-}
-a{color:var(--link)}
-::selection{background:var(--accent); color:#fff}
-
-.topbar{
-  position:sticky; top:0; z-index:50;
-  display:flex; align-items:center; justify-content:space-between;
-  gap:1rem; padding:.7rem 1.2rem;
-  background:color-mix(in srgb, var(--bg-elev) 88%, transparent);
-  backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--border);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-}
-.topbar .brand{font-weight:700; font-size:.92rem; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-.topbar .brand span{color:var(--accent)}
-.topbar-actions{display:flex; gap:.5rem; align-items:center}
-.iconbtn{
-  border:1px solid var(--border); background:var(--bg-elev); color:var(--text);
-  border-radius:8px; padding:.4rem .6rem; cursor:pointer; font-size:.85rem;
-  font-family:inherit;
-}
-.iconbtn:hover{border-color:var(--accent)}
-
-.hero{
-  max-width:var(--maxw); margin:0 auto; padding:3.2rem 1.4rem 1.6rem;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-}
-.hero .kicker{
-  text-transform:uppercase; letter-spacing:.12em; font-size:.72rem; font-weight:700;
-  color:var(--accent); margin-bottom:.9rem;
-}
-.hero h1{
-  font-family:"Iowan Old Style","Georgia","Noto Serif",serif;
-  font-size:2.1rem; line-height:1.22; margin:0 0 1rem; font-weight:700;
-}
-.hero .dek{ color:var(--text-dim); font-size:1.05rem; margin:0 0 1.4rem; max-width:62ch;}
-.meta-row{
-  display:flex; flex-wrap:wrap; gap:.5rem; font-size:.82rem; color:var(--text-dim);
-}
-.pill{
-  border:1px solid var(--border); background:var(--bg-elev); border-radius:999px;
-  padding:.3rem .8rem;
-}
-.pill.hot{border-color:var(--warn-border); color:var(--accent); background:var(--warn-bg); font-weight:600}
-
-.stat-strip{
-  max-width:var(--maxw); margin:1.6rem auto 0; padding:0 1.4rem;
-  display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:.7rem;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-}
-.stat{
-  background:var(--bg-elev); border:1px solid var(--border); border-radius:12px;
-  padding:.85rem 1rem; box-shadow:var(--shadow);
-}
-.stat .num{font-size:1.35rem; font-weight:800; color:var(--accent); line-height:1.15}
-.stat .lbl{font-size:.72rem; color:var(--text-dim); margin-top:.15rem}
-
-.toc-wrap{max-width:var(--maxw); margin:2.2rem auto 0; padding:0 1.4rem;}
-.toc{
-  background:var(--bg-elev); border:1px solid var(--border); border-radius:14px;
-  padding:1.1rem 1.3rem; box-shadow:var(--shadow);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-}
-.toc summary{cursor:pointer; font-weight:700; font-size:.9rem; letter-spacing:.02em}
-.toc ol{margin:.9rem 0 0; padding-left:1.2rem; font-size:.88rem; columns:1;}
-.toc li{margin:.32rem 0}
-.toc a{text-decoration:none}
-.toc a:hover{text-decoration:underline}
-.toc .upd{color:var(--accent); font-weight:700}
-
-article{
-  max-width:var(--maxw); margin:0 auto; padding:2.2rem 1.4rem 1rem;
-}
-article h2{
-  font-size:1.5rem; margin:2.6rem 0 1rem; padding-top:.4rem;
-  border-top:1px solid var(--border);
-  scroll-margin-top:4.5rem;
-}
-article h2:first-of-type{border-top:none; margin-top:0}
-article h3{
-  font-size:1.15rem; margin:1.9rem 0 .8rem; color:var(--accent-2);
-  scroll-margin-top:4.5rem;
-}
-article p{margin:0 0 1.15rem}
-article ul, article ol{margin:0 0 1.15rem; padding-left:1.4rem}
-article li{margin:.3rem 0}
-article strong{color:var(--text); font-weight:700}
-article em{color:var(--text-dim)}
-article code{
-  background:var(--code-bg); border:1px solid var(--border); border-radius:5px;
-  padding:.12em .38em; font-size:.86em; font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
-}
-article pre{
-  background:var(--code-bg); border:1px solid var(--border); border-radius:10px;
-  padding:1rem 1.1rem; overflow-x:auto; margin:0 0 1.3rem;
-  box-shadow:var(--shadow);
-}
-article pre code{background:none; border:none; padding:0; font-size:.83rem; line-height:1.55}
-article blockquote{
-  margin:0 0 1.15rem; padding:.2rem 1.1rem; border-left:3px solid var(--accent);
-  color:var(--text-dim); font-style:italic;
-}
-article sup a{
-  text-decoration:none; color:var(--accent); font-weight:700;
-}
-article hr{border:none; border-top:1px solid var(--border); margin:2.4rem 0}
-
-.table-wrap{overflow-x:auto; margin:0 0 1.4rem; border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow)}
-article table{border-collapse:collapse; width:100%; font-size:.86rem; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
-article th, article td{padding:.55rem .75rem; border-bottom:1px solid var(--border); text-align:left; vertical-align:top}
-article thead th{background:var(--table-head); font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; white-space:nowrap}
-article tbody tr:last-child td{border-bottom:none}
-article tbody tr:hover{background:var(--bg-inset)}
-
-article figure{margin:1.6rem 0 2rem}
-article figure img{
-  width:100%; height:auto; display:block; border-radius:10px; border:1px solid var(--border);
-  background:#fff;
-}
-article figcaption{
-  text-align:center; font-size:.82rem; color:var(--text-dim); margin-top:.6rem;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-}
-
-.update-banner{
-  max-width:var(--maxw); margin:2rem auto 0; padding:0 1.4rem;
-}
-.update-banner .box{
-  background:var(--warn-bg); border:1px solid var(--warn-border); border-radius:12px;
-  padding:1rem 1.2rem; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  font-size:.9rem;
-}
-.update-banner strong{color:var(--accent)}
-
-footer{
-  max-width:var(--maxw); margin:2rem auto 0; padding:1.6rem 1.4rem 3rem;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  font-size:.82rem; color:var(--text-dim); border-top:1px solid var(--border);
-}
-footer a{color:var(--text-dim)}
-.back-top{
-  position:fixed; right:1.2rem; bottom:1.2rem; z-index:40;
-  width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
-  background:var(--accent); color:#fff; text-decoration:none; box-shadow:var(--shadow);
-  opacity:0; pointer-events:none; transition:opacity .2s;
-  font-family:-apple-system,sans-serif; font-weight:700;
-}
-.back-top.show{opacity:1; pointer-events:auto}
-
-@media (max-width:640px){
-  :root{font-size:16px}
-  .hero h1{font-size:1.65rem}
-}
-</style>
+<link rel="stylesheet" href="assets/report.css">
+<link rel="alternate" hreflang="en" href="en/index.html">
 </head>
 <body>
 
+<div class="top-accent"></div>
 <div class="topbar">
-  <div class="brand">🔓 COLDCARD&nbsp;<span>ENTROPY&nbsp;HACK</span>&nbsp;2026</div>
+  <div class="brand"><span class="mark">CK</span><span class="full"><strong>COLDCARD</strong>&nbsp;ENTROPY&nbsp;HACK&nbsp;2026</span></div>
   <div class="topbar-actions">
-    <button class="iconbtn" id="themeToggle" aria-label="Przełącz motyw">🌓 Motyw</button>
-    <a class="iconbtn" href="Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md">⬇ Markdown</a>
+    <div class="lang-switch">
+      <a class="active" href="index.html">PL</a>
+      <a href="en/index.html">EN</a>
+    </div>
+    <button class="iconbtn" id="themeToggle" aria-label="Przełącz motyw">🌓</button>
+    <a class="iconbtn" href="Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md">⬇ .md</a>
   </div>
 </div>
 
 <div class="hero">
-  <div class="kicker">Raport badawczy · analiza inżynieryjna · aktualizowany</div>
+  <div class="kicker">Raport badawczy · analiza inżynieryjna</div>
   <h1>Hack na entropię Coldcard: co się stało, dlaczego i jak się zabezpieczyć</h1>
   <p class="dek">Kompletna, inżynierska rekonstrukcja największego znanego włamania na portfel sprzętowy w historii Bitcoina — od jednego znaku w kodzie preprocesora, przez matematykę przestrzeni poszukiwań, po najświeższe dane o stratach, pozwach i reakcji rynku.</p>
   <div class="meta-row">
     <span class="pill hot">Zaktualizowano: 10 sierpnia 2026</span>
-    <span class="pill">Pierwsza publikacja: 9 sierpnia 2026</span>
     <span class="pill">Incydent: 30 lipca 2026</span>
     <span class="pill">63 źródła</span>
   </div>
+</div>
+
+<div class="doc-meta">
+  <table>
+    <tr><td class="k">Typ dokumentu</td><td class="v">Raport badawczy (deep research), poziom inżynierski</td></tr>
+    <tr><td class="k">Status</td><td class="v">Publiczny · aktualizowany w miarę napływu informacji</td></tr>
+    <tr><td class="k">Wersja / stan na</td><td class="v">10 sierpnia 2026 r. (pierwsza publikacja: 9 sierpnia 2026)</td></tr>
+    <tr><td class="k">Zakres</td><td class="v">Root cause, matematyka entropii, komunikacja kryzysowa, precedensy, rekomendacje</td></tr>
+    <tr><td class="k">Język</td><td class="v">Polski · <a href="en/index.html">English version →</a></td></tr>
+  </table>
 </div>
 
 <div class="stat-strip">
@@ -742,32 +544,12 @@ footer a{color:var(--text-dim)}
 </article>
 
 <footer>
+  <div class="foot-brand"><span class="mark">CK</span> Coldcard Entropy Hack 2026 — raport niezależny</div>
   <p><strong>Zastrzeżenie:</strong> materiał ma charakter wyłącznie informacyjno-edukacyjny i nie stanowi porady inwestycyjnej, prawnej ani bezpieczeństwa dla konkretnego podmiotu. Liczby dotyczące strat pochodzą z publicznych analiz on-chain o różnych metodologiach i mogą ulec korekcie. Wszystkie 63 źródła są linkowane bezpośrednio przy twierdzeniach (indeksy górne w tekście).</p>
-  <p>Pełny tekst źródłowy w Markdown: <a href="Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md">Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md</a> · Repozytorium na GitHubie zawiera pełną historię aktualizacji.</p>
+  <p>Pełny tekst źródłowy w Markdown: <a href="Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md">Hack-na-entropie-Coldcard-2026-analiza-inzynieryjna.md</a> · <a href="en/index.html">English version</a> · <a href="https://github.com/zi3lak/coldcard-entropy-hack-2026">repozytorium na GitHubie</a>.</p>
 </footer>
 
 <a href="#" class="back-top" id="backTop" aria-label="Do góry">↑</a>
-
-<script>
-(function(){
-  var root = document.documentElement;
-  var btn = document.getElementById('themeToggle');
-  var stored = localStorage.getItem('theme');
-  if (stored === 'dark' || stored === 'light') root.setAttribute('data-theme', stored);
-  btn.addEventListener('click', function(){
-    var current = root.getAttribute('data-theme');
-    var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var effectiveIsDark = current ? current === 'dark' : prefersDark;
-    var next = effectiveIsDark ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-  });
-
-  var backTop = document.getElementById('backTop');
-  window.addEventListener('scroll', function(){
-    backTop.classList.toggle('show', window.scrollY > 600);
-  });
-})();
-</script>
+<script src="assets/report.js"></script>
 </body>
 </html>
